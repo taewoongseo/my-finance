@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ACCOUNT_TYPES, MONTH_OPTIONS } from '../config';
-import { getAccounts, saveAccount, deleteAccount } from '../utils/storage';
-
+import { getAccounts, saveAccount, deleteAccount, getSavingsAccounts } from '../utils/storage';
 const MONTHS = [];
 const now = new Date();
 for (let i = 0; i < 24; i++) {
@@ -52,7 +51,8 @@ export default function Step1Upload({ onProcess, loading }) {
       .filter(a => uploads[a.id])
       .map(a => ({ account: a, file: uploads[a.id] }));
     if (!uploadedAccounts.length) return;
-    onProcess({ month: selectedMonth, uploads: uploadedAccounts });
+    const savingsAccounts = getSavingsAccounts();
+    onProcess({ month: selectedMonth, uploads: uploadedAccounts, savingsAccounts });
   };
 
   const uploadCount = Object.keys(uploads).filter(id => uploads[id]).length;

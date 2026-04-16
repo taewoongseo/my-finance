@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Step1Upload from './components/Step1Upload';
 import Step2Review from './components/Step2Review';
+import Step3Dashboard from './components/Step3Dashboard';
 
 export default function App() {
   const [step, setStep] = useState(1);
@@ -8,7 +9,7 @@ export default function App() {
   const [finalTransactions, setFinalTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const handleProcess = async ({ month, uploads }) => {
+  const handleProcess = async ({ month, uploads, savingsAccounts }) => {
     setLoading(true);
     const formData = new FormData();
     uploads.forEach(({ account, file }) => {
@@ -17,6 +18,9 @@ export default function App() {
       formData.append('account_types', account.type);
     });
     formData.append('month', month);
+    // pass savings account names for transfer detection
+    const savingsNames = (savingsAccounts || []).map(a => a.name);
+    formData.append('savings_account_names', JSON.stringify(savingsNames));
 
     try {
       const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData });
@@ -40,9 +44,12 @@ export default function App() {
       {step === 1 && <Step1Upload onProcess={handleProcess} loading={loading} />}
       {step === 2 && <Step2Review monthData={monthData} onDone={handleReviewDone} />}
       {step === 3 && (
-        <div style={{ color: 'white', padding: 40, background: '#0a0a0a', minHeight: '100vh' }}>
-          Step 3 coming next — {finalTransactions.length} clean transactions ready
-        </div>
+        <Step3Dashboard
+          finalTransactions={finalTransactions}
+          offsets={monthData?.offsets || []}
+          month={monthData?.month}
+          onBack={() => setStep(2)}
+        />
       )}
     </div>
   );

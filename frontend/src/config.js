@@ -12,7 +12,7 @@ export const ACCOUNT_TYPES = [
       label: 'Housing',
       subcategories: [
         { id: 'rent', label: 'Rent' },
-        { id: 'insurance', label: 'Insurance' },
+        { id: 'insurance', label: 'Home Insurance' },
       ],
     },
     {
@@ -45,12 +45,26 @@ export const ACCOUNT_TYPES = [
       ],
     },
     {
-      id: 'others',
-      label: 'Others',
+      id: 'personal',
+      label: 'Personal',
       subcategories: [
         { id: 'shopping', label: 'Shopping' },
         { id: 'hobbies', label: 'Hobbies' },
+        { id: 'wellness', label: 'Wellness' },
+      ],
+    },
+    {
+      id: 'giving',
+      label: 'Giving',
+      subcategories: [
         { id: 'offering', label: 'Offering' },
+        { id: 'gift', label: 'Gift' },
+      ],
+    },
+    {
+      id: 'other',
+      label: 'Other',
+      subcategories: [
         { id: 'misc', label: 'Misc. Spending' },
         { id: 'bank_fees', label: 'Bank fees' },
       ],

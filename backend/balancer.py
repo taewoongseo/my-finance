@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import json
 from openai import OpenAI
 from datetime import datetime
 
@@ -9,13 +10,18 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 VENMO_FOOD_KEYWORDS = [
     'dinner', 'lunch', 'breakfast', 'food', 'eat', 'meal', 'pizza',
-    'sushi', 'ramen', 'burger', 'coffee', 'drinks', 'bar', 'restaurant',
-    'brunch', 'snack', 'boba', 'cafe', 'diner', 'bbq', 'taco', 'noodle',
+    'sushi', 'ramen', 'burger', 'restaurant', 'brunch', 'diner',
+    'bbq', 'taco', 'noodle', 'korean bbq', 'hotpot',
 ]
 
-VENMO_INCOME_KEYWORDS = [
-    'rent', 'salary', 'paycheck', 'allowance', 'refund', 'reimbursement',
-    'pay you back', 'owe', 'deposit',
+VENMO_DRINKS_KEYWORDS = [
+    'coffee', 'drinks', 'bar', 'boba', 'cafe', 'snack', 'snacks',
+    'bubble tea', 'juice', 'latte', 'beer', 'wine',
+]
+
+VENMO_GROCERY_KEYWORDS = [
+    'hmart', 'h mart', 'grocery', 'groceries', 'trader joe', 
+    'whole foods', 'costco', 'supermarket',
 ]
 
 CC_PAYMENT_KEYWORDS = [
@@ -25,6 +31,7 @@ CC_PAYMENT_KEYWORDS = [
     'card payment',
     'online payment',
     'mobile payment',
+    'balance transfer',
     'acct payment',
     'bilt payment',
 ]
@@ -38,14 +45,18 @@ ONE_SIDED_PAYMENT_KEYWORDS = [
     'payment to discover',
     'payment to capital one',
     'card ending',
-    'card payment',
     'bilt payment',
+    'bps bilt',
+    'rent payment',
+    'bilt card',          
+    'bilt rent',          
 ]
 
 KNOWN_SAVINGS_KEYWORDS = [
     'robinhood', 'fidelity', 'vanguard', 'schwab',
     'wealthfront', 'betterment', 'acorns', 'stash',
-    'wirebarley', 'wise', 'guideline', '401k', '401(k)',
+    'guideline', '401k', '401(k)',
+    'americanexpress',
 ]
 
 def dates_within_days(date1_str: str, date2_str: str, days: int = 3) -> bool:
@@ -70,40 +81,74 @@ def dates_within_days(date1_str: str, date2_str: str, days: int = 3) -> bool:
 def amounts_match(a1: float, a2: float, tolerance: float = 1.0) -> bool:
     return abs(a1 - a2) <= tolerance
 
-def classify_venmo_note_with_llm(note: str) -> str:
-    if not note or note == 'nan':
-        return 'unclear'
+def classify_venmo_notes_batch(notes: list[str]) -> list[str]:
+    """
+    Classify multiple Venmo notes in ONE LLM call.
+    Returns list of 'food', 'drinks', or 'unclear' for each note.
+    food   → offset Dine out
+    drinks → offset Drinks/snacks
+    unclear → flag for human review
+    """
+    if not notes:
+        return []
 
-    note_lower = note.lower()
-    if any(k in note_lower for k in VENMO_FOOD_KEYWORDS):
-        return 'food'
-    if any(k in note_lower for k in VENMO_INCOME_KEYWORDS):
-        return 'income'
+    results = []
+    needs_llm = []
+    needs_llm_idx = []
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You classify Venmo payment notes.
-Return ONLY one word: 'food', 'income', or 'unclear'.
-- 'food': note suggests splitting a meal, drinks, food, restaurant
-- 'income': note suggests rent, salary, gift, general reimbursement
-- 'unclear': cannot determine from note alone
-Translate non-English text first, then classify."""
-                },
-                {"role": "user", "content": f"Venmo note: {note}"}
-            ],
-            temperature=0,
-            max_tokens=10,
-        )
-        result = response.choices[0].message.content.strip().lower()
-        if result in ['food', 'income', 'unclear']:
-            return result
-        return 'unclear'
-    except:
-        return 'unclear'
+    # first pass — keyword matching, no API needed
+    for i, note in enumerate(notes):
+        if not note or note == 'nan':
+            results.append('unclear')
+            continue
+        note_lower = note.lower()
+        if any(k in note_lower for k in VENMO_FOOD_KEYWORDS):
+            results.append('food')
+        elif any(k in note_lower for k in VENMO_DRINKS_KEYWORDS):
+            results.append('drinks')
+        elif any(k in note_lower for k in VENMO_GROCERY_KEYWORDS):
+            results.append('groceries')
+        else:
+            results.append(None)
+            needs_llm.append(note)
+            needs_llm_idx.append(i)
+
+    # second pass — batch LLM for ambiguous ones
+    if needs_llm:
+        try:
+            notes_list = "\n".join([f"{i+1}. {n}" for i, n in enumerate(needs_llm)])
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """Classify each Venmo note. Someone paid the user — what was it for?
+Return ONLY a JSON array of strings, same length as input.
+Each string must be exactly 'food', 'drinks', or 'unclear'.
+- 'food': splitting a meal, restaurant, dining
+- 'drinks': coffee, boba, bubble tea, bar drinks, snacks, cafe
+- 'unclear': anything else — gifts, unclear, non-food related
+Translate non-English text first, then classify.
+Example: ["food", "drinks", "unclear"]"""
+                    },
+                    {"role": "user", "content": notes_list}
+                ],
+                temperature=0,
+                max_tokens=200,
+            )
+            raw = response.choices[0].message.content.strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            llm_results = json.loads(raw)
+
+            for i, idx in enumerate(needs_llm_idx):
+                r = llm_results[i] if i < len(llm_results) else 'unclear'
+                results[idx] = r if r in ['food', 'drinks', 'unclear'] else 'unclear'
+        except Exception as e:
+            print(f"Venmo classification error: {e}")
+            for idx in needs_llm_idx:
+                results[idx] = 'unclear'
+
+    return results
 
 def balance_transactions(transactions: list[dict], savings_account_names: list[str] = []) -> dict:
     excluded = []
@@ -144,6 +189,8 @@ def balance_transactions(transactions: list[dict], savings_account_names: list[s
                     'reason': 'CC payment pair',
                     'transactions': [credit, debit]
                 })
+                print(f"  Rule1 caught: {credit['description']} ${credit['amount']} id={credit['_id']} + {debit['description']} ${debit['amount']} id={debit['_id']}")
+                break
                 break
 
     # ── RULE 1b: One-sided CC payment from checking ───────────
@@ -159,7 +206,8 @@ def balance_transactions(transactions: list[dict], savings_account_names: list[s
                 'reason': 'CC payment from checking (one-sided)',
                 'transactions': [t]
             })
-            print(f"  ONE-SIDED CC PAYMENT: {t['description']} ${t['amount']}")
+            print(f"  1b caught: {t['description']} ${t['amount']} id={t['_id']}")
+            
 
     # ── RULE 2: Venmo funding from checking ──────────────────
     for t in checking_transactions:
@@ -197,32 +245,45 @@ def balance_transactions(transactions: list[dict], savings_account_names: list[s
                     'transactions': [t]
                 })
 
-    # ── RULE 4: Venmo received → offset or flag ──────────────
-    for t in venmo_transactions:
-        if t['_id'] in excluded_ids:
-            continue
-        if t['type'] != 'credit':
-            continue
+    # ── RULE 4: Venmo received → batch classify ───────────────
+    venmo_credits = [
+        t for t in venmo_transactions
+        if t['_id'] not in excluded_ids and t['type'] == 'credit'
+    ]
 
-        note = t.get('raw_note', '') or t.get('description', '')
-        classification = classify_venmo_note_with_llm(note)
+    if venmo_credits:
+        notes = [t.get('raw_note', '') or '' for t in venmo_credits]
+        classifications = classify_venmo_notes_batch(notes)
 
-        if classification == 'food':
+        for t, classification in zip(venmo_credits, classifications):
             excluded_ids.add(t['_id'])
-            offsets.append({
-                **t,
-                'offset_category': 'Dine out',
-                'amount': -t['amount'],
-            })
-        elif classification == 'income':
-            pass
-        else:
-            excluded_ids.add(t['_id'])
-            flagged.append({
-                **t,
-                'flag_type': 'venmo_received',
-                'flag_message': 'What was this Venmo payment for?',
-            })
+            note = t.get('raw_note', '') or ''
+            note_display = f" · {note}" if note and note != 'nan' else ''
+
+            if classification == 'food':
+                offsets.append({
+                    **t,
+                    'offset_category': 'Dine out',
+                    'amount': -t['amount'],
+                })
+            elif classification == 'drinks':
+                offsets.append({
+                    **t,
+                    'offset_category': 'Drinks/snacks',
+                    'amount': -t['amount'],
+                })
+            elif classification == 'groceries':
+                offsets.append({
+                    **t,
+                    'offset_category': 'Groceries',
+                    'amount': -t['amount'],
+                })
+            else:
+                flagged.append({
+                    **t,
+                    'flag_type': 'venmo_received',
+                    'flag_message': f"What did they pay you for?{note_display}",
+                })
 
     # ── RULE 5: Zelle → always flag ──────────────────────────
     for t in transactions:
@@ -270,6 +331,9 @@ def balance_transactions(transactions: list[dict], savings_account_names: list[s
     print(f"Flagged: {len(flagged)}")
     for f in flagged:
         print(f"  [{f['flag_type']}] {f['description'][:40]}")
+    print(f"Offsets: {len(offsets)}")
+    for o in offsets:
+        print(f"  [offset → {o['offset_category']}] {o['description'][:40]} ${abs(o['amount'])}")
     print(f"Clean: {len([t for t in transactions if t['_id'] not in excluded_ids])}")
     print(f"========================\n")
 

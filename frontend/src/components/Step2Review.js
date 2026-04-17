@@ -52,6 +52,8 @@ function FlagCard({ transaction, onConfirm }) {
   const [selected, setSelected] = useState(null);
   const [confirmed, setConfirmed] = useState(false);
   const [dismissing, setDismissing] = useState(false);
+  const [excluded, setExcluded] = useState(false);
+  const [undoTimer, setUndoTimer] = useState(null);
   const isIncoming = transaction.type === 'credit';
 
   const handleConfirm = () => {
@@ -63,7 +65,53 @@ function FlagCard({ transaction, onConfirm }) {
     }, 350);
   };
 
+  const handleExclude = () => {
+    setExcluded(true);
+    const timer = setTimeout(() => {
+      setConfirmed(true);
+      onConfirm(transaction.id, 'EXCLUDE', isIncoming);
+    }, 3000);
+    setUndoTimer(timer);
+  };
+
+  const handleUndo = () => {
+    if (undoTimer) clearTimeout(undoTimer);
+    setUndoTimer(null);
+    setExcluded(false);
+  };
+
   if (confirmed) return null;
+
+  if (excluded) {
+    return (
+      <div style={{
+        background: '#111', border: '0.5px solid #1e1e1e',
+        borderRadius: 12, padding: 18, marginBottom: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        opacity: 0.5, transition: 'all 0.3s',
+      }}>
+        <div>
+          <div style={{ fontSize: 13, color: '#555', textDecoration: 'line-through' }}>
+            {transaction.description}
+          </div>
+          <div style={{ fontSize: 11, color: '#444', marginTop: 3 }}>
+            Excluded from spending
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 13, fontFamily: 'monospace', color: '#444' }}>
+            ${Math.abs(transaction.amount).toFixed(2)}
+          </span>
+          <span
+            onClick={handleUndo}
+            style={{ fontSize: 12, color: '#c8f04a', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            undo
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -92,6 +140,23 @@ function FlagCard({ transaction, onConfirm }) {
         border: '0.5px solid #2d3d18', borderRadius: 8,
       }}>
         {isIncoming ? 'What did they pay you for?' : 'What was this payment for?'}
+        {transaction.flag_message?.includes('·') && (
+          <span style={{ color: '#c8f04a' }}>
+            {' · ' + transaction.flag_message.split('·')[1]}
+          </span>
+        )}
+      </div>
+
+      {/* Exclude option */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <span
+          onClick={handleExclude}
+          style={{ fontSize: 11, color: '#444', cursor: 'pointer', textDecoration: 'underline', transition: 'color 0.15s' }}
+          onMouseEnter={e => e.target.style.color = '#ff6b6b'}
+          onMouseLeave={e => e.target.style.color = '#444'}
+        >
+          exclude from spending
+        </span>
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -157,6 +222,8 @@ function FlipCard({ transaction, onConfirm }) {
   );
   const [confirmed, setConfirmed] = useState(false);
   const [dismissing, setDismissing] = useState(false);
+  const [excluded, setExcluded] = useState(false);
+  const [undoTimer, setUndoTimer] = useState(null);
   const isIncome = transaction.type === 'credit';
 
   const handleConfirm = () => {
@@ -168,7 +235,54 @@ function FlipCard({ transaction, onConfirm }) {
     }, 350);
   };
 
+  const handleExclude = () => {
+    setExcluded(true);
+    const timer = setTimeout(() => {
+      setConfirmed(true);
+      onConfirm(transaction.id, 'EXCLUDE', false);
+    }, 3000);
+    setUndoTimer(timer);
+  };
+
+  const handleUndo = () => {
+    if (undoTimer) clearTimeout(undoTimer);
+    setUndoTimer(null);
+    setExcluded(false);
+  };
+
   if (confirmed) return null;
+
+  // soft dismiss state — show excluded UI
+  if (excluded) {
+    return (
+      <div style={{
+        background: '#111', border: '0.5px solid #1e1e1e',
+        borderRadius: 12, padding: 18, marginBottom: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        opacity: 0.5, transition: 'all 0.3s',
+      }}>
+        <div>
+          <div style={{ fontSize: 13, color: '#555', textDecoration: 'line-through' }}>
+            {transaction.description}
+          </div>
+          <div style={{ fontSize: 11, color: '#444', marginTop: 3 }}>
+            Excluded from spending
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 13, fontFamily: 'monospace', color: '#444' }}>
+            ${Math.abs(transaction.amount).toFixed(2)}
+          </span>
+          <span
+            onClick={handleUndo}
+            style={{ fontSize: 12, color: '#c8f04a', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            undo
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -204,6 +318,18 @@ function FlipCard({ transaction, onConfirm }) {
             {transaction.category}?
           </span>
         )}
+      </div>
+
+      {/* Exclude option */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <span
+          onClick={handleExclude}
+          style={{ fontSize: 11, color: '#444', cursor: 'pointer', textDecoration: 'underline', transition: 'color 0.15s' }}
+          onMouseEnter={e => e.target.style.color = '#ff6b6b'}
+          onMouseLeave={e => e.target.style.color = '#444'}
+        >
+          exclude from spending
+        </span>
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -299,17 +425,21 @@ export default function Step2Review({ monthData, onDone }) {
   const handleDone = () => {
     const finalTransactions = nonTransfers.map(t => ({
       ...t,
-      category: confirmedCategories[t.id]?.category || t.category,
-    }));
-
+      category: confirmedCategories[t.id]?.category === 'EXCLUDE'
+        ? null
+        : confirmedCategories[t.id]?.category || t.category,
+    })).filter(t => t.category !== null); // ← drop excluded FlipCard transactions
+  
     const newOffsets = [];
     const newTransactions = [];
-
+  
     flaggedTransactions.forEach(t => {
       const decision = confirmedCategories[t.id];
       if (!decision) return;
       const { category, isIncoming } = decision;
-
+  
+      if (category === 'EXCLUDE') return; // ← drop excluded FlagCard transactions
+  
       if (isIncoming) {
         if (category === 'Income') {
           newTransactions.push({ ...t, type: 'credit', category: 'Income' });
@@ -325,7 +455,7 @@ export default function Step2Review({ monthData, onDone }) {
         newTransactions.push({ ...t, category, type: 'debit' });
       }
     });
-
+  
     const excludedIds = new Set();
     transfers.forEach(transfer => {
       const isAutoExcluded = transfer.confidence === 'high';
@@ -334,12 +464,12 @@ export default function Step2Review({ monthData, onDone }) {
         transfer.transactions.forEach(t => excludedIds.add(t.id));
       }
     });
-
+  
     const cleanTransactions = [
       ...finalTransactions.filter(t => !excludedIds.has(t.id)),
       ...newTransactions,
     ];
-
+  
     onDone(cleanTransactions, newOffsets);
   };
 

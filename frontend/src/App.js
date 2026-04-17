@@ -7,6 +7,7 @@ export default function App() {
   const [step, setStep] = useState(1);
   const [monthData, setMonthData] = useState(null);
   const [finalTransactions, setFinalTransactions] = useState([]);
+  const [allOffsets, setAllOffsets] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const handleProcess = async ({ month, uploads, savingsAccounts }) => {
@@ -18,7 +19,6 @@ export default function App() {
       formData.append('account_types', account.type);
     });
     formData.append('month', month);
-    // pass savings account names for transfer detection
     const savingsNames = (savingsAccounts || []).map(a => a.name);
     formData.append('savings_account_names', JSON.stringify(savingsNames));
 
@@ -26,6 +26,7 @@ export default function App() {
       const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData });
       const data = await res.json();
       setMonthData({ ...data, month });
+      setAllOffsets(data.offsets || []); // ← store balancer auto-offsets
       setStep(2);
     } catch (err) {
       console.error('Upload failed:', err);
@@ -34,8 +35,9 @@ export default function App() {
     }
   };
 
-  const handleReviewDone = (cleanTransactions) => {
+  const handleReviewDone = (cleanTransactions, newOffsets) => { // ← accept newOffsets
     setFinalTransactions(cleanTransactions);
+    setAllOffsets(prev => [...prev, ...(newOffsets || [])]); // ← merge with balancer offsets
     setStep(3);
   };
 
@@ -46,7 +48,7 @@ export default function App() {
       {step === 3 && (
         <Step3Dashboard
           finalTransactions={finalTransactions}
-          offsets={monthData?.offsets || []}
+          offsets={allOffsets}  // ← combined auto + manual offsets
           month={monthData?.month}
           onBack={() => setStep(2)}
         />

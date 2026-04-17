@@ -165,7 +165,7 @@ function StatCard({ label, value, sub, type = 'neutral' }) {
   );
 }
 
-function SavingsSection({ month }) {
+function SavingsSection({ month, onTotalChange }) {
   const [accounts, setAccounts] = useState([]);
   const [amounts, setAmounts] = useState({});
   const [showAdd, setShowAdd] = useState(false);
@@ -199,6 +199,10 @@ function SavingsSection({ month }) {
   };
 
   const total = accounts.reduce((sum, a) => sum + (parseFloat(amounts[a.id]) || 0), 0);
+
+  useEffect(() => {
+    if (onTotalChange) onTotalChange(total); // ← report total upward
+  }, [total]);
 
   return (
     <div style={{ background: '#111', border: '0.5px solid #1e1e1e', borderRadius: 16, padding: 24, marginTop: 16 }}>
@@ -430,10 +434,13 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
 
   export default function Step3Dashboard({ finalTransactions, offsets, month, onBack }) {
     const [totalIncome, setTotalIncome] = useState(0);
+    const [totalSaved, setTotalSaved] = useState(0);
     
     const categories = aggregateByCategory(finalTransactions, offsets || []);
     const maxAmount = Math.max(...categories.map(c => c.total), 1);
     const totalExpenses = categories.reduce((sum, c) => sum + Math.max(c.total, 0), 0);
+    const cashFlow = totalIncome - totalExpenses - totalSaved;
+    const savingsRate = totalIncome > 0 ? ((totalSaved / totalIncome) * 100).toFixed(1) : '—';
   
     // auto-detect direct deposits from transactions
     const autoIncome = finalTransactions
@@ -446,7 +453,6 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
       .reduce((sum, t) => sum + t.amount, 0);
   
     const netIncome = totalIncome - totalExpenses;
-    const savingsRate = totalIncome > 0 ? ((netIncome / totalIncome) * 100).toFixed(1) : '—';
     const monthLabel = new Date(month + '-15').toLocaleString('default', { month: 'long', year: 'numeric' });
   
     useEffect(() => {
@@ -495,11 +501,34 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
           </div>
   
           {/* Stat cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
-            <StatCard label="Total income" value={`$${totalIncome.toFixed(2)}`} type="neutral" />
-            <StatCard label="Total expenses" value={`$${totalExpenses.toFixed(2)}`} type="negative" />
-            <StatCard label="Net income" value={`$${netIncome.toFixed(2)}`} type={netIncome >= 0 ? 'positive' : 'negative'} />
-            <StatCard label="Savings rate" value={`${savingsRate}%`} type="positive" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 32 }}>
+            <StatCard 
+              label="Net income" 
+              value={`$${totalIncome.toFixed(2)}`} 
+              type="neutral" 
+            />
+            <StatCard 
+              label="Expenses" 
+              value={`$${totalExpenses.toFixed(2)}`} 
+              type="negative" 
+            />
+            <StatCard 
+              label="Saved" 
+              value={`$${totalSaved.toFixed(2)}`} 
+              type="positive" 
+            />
+            <StatCard 
+              label="Savings rate" 
+              value={`${savingsRate}%`} 
+              sub={totalSaved > 0 ? `${savingsRate}% of income` : 'add savings below'} 
+              type="positive" 
+            />
+            <StatCard 
+              label="Cash flow" 
+              value={`$${cashFlow.toFixed(2)}`}
+              sub="unaccounted"
+              type={cashFlow >= 0 ? 'positive' : 'negative'} 
+            />
           </div>
   
           {/* Income section */}
@@ -523,7 +552,10 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
           </div>
   
           {/* Savings */}
-          <SavingsSection month={month} />
+          <SavingsSection 
+            month={month} 
+            onTotalChange={setTotalSaved}
+          />
         </div>
       </div>
     );

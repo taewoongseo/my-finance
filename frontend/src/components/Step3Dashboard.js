@@ -432,7 +432,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     );
   }
 
-  export default function Step3Dashboard({ finalTransactions, offsets, month, onBack }) {
+  export default function Step3Dashboard({ finalTransactions, offsets, month, onBack, onReprocess }) {
     const [totalIncome, setTotalIncome] = useState(0);
     const [totalSaved, setTotalSaved] = useState(0);
     
@@ -442,17 +442,10 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const cashFlow = totalIncome - totalExpenses - totalSaved;
     const savingsRate = totalIncome > 0 ? ((totalSaved / totalIncome) * 100).toFixed(1) : '—';
   
-    // auto-detect direct deposits from transactions
     const autoIncome = finalTransactions
       .filter(t => t.type === 'credit' && t.category === 'Income')
       .reduce((sum, t) => sum + t.amount, 0);
   
-    // auto-detect other income (Venmo/Zelle confirmed as income in review)
-    const autoOtherIncome = finalTransactions
-      .filter(t => t.type === 'credit' && t.category !== 'Income' && t.category !== 'Transfer')
-      .reduce((sum, t) => sum + t.amount, 0);
-  
-    const netIncome = totalIncome - totalExpenses;
     const monthLabel = new Date(month + '-15').toLocaleString('default', { month: 'long', year: 'numeric' });
   
     useEffect(() => {
@@ -461,6 +454,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
   
     return (
       <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0ede8', fontFamily: "'DM Sans', sans-serif", display: 'grid', gridTemplateColumns: '200px 1fr' }}>
+        
         {/* Sidebar */}
         <div style={{ background: '#111', borderRight: '0.5px solid #1a1a1a', padding: '28px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 40 }}>
@@ -479,10 +473,15 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
           ))}
           <div style={{ marginTop: 32, paddingTop: 32, borderTop: '0.5px solid #1a1a1a' }}>
             <div onClick={onBack} style={{ fontSize: 12, color: '#444', cursor: 'pointer', padding: '8px 12px' }}>
-              ← Back to review
+              ← All months
             </div>
+            {onReprocess && (
+              <div onClick={onReprocess} style={{ fontSize: 12, color: '#444', cursor: 'pointer', padding: '8px 12px' }}>
+                ↺ Reprocess
+              </div>
+            )}
           </div>
-        </div>
+        </div> {/* ← sidebar closes here */}
   
         {/* Main content */}
         <div style={{ padding: 32, overflowY: 'auto' }}>
@@ -502,33 +501,11 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
   
           {/* Stat cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 32 }}>
-            <StatCard 
-              label="Net income" 
-              value={`$${totalIncome.toFixed(2)}`} 
-              type="neutral" 
-            />
-            <StatCard 
-              label="Expenses" 
-              value={`$${totalExpenses.toFixed(2)}`} 
-              type="negative" 
-            />
-            <StatCard 
-              label="Saved" 
-              value={`$${totalSaved.toFixed(2)}`} 
-              type="positive" 
-            />
-            <StatCard 
-              label="Savings rate" 
-              value={`${savingsRate}%`} 
-              sub={totalSaved > 0 ? `${savingsRate}% of income` : 'add savings below'} 
-              type="positive" 
-            />
-            <StatCard 
-              label="Cash flow" 
-              value={`$${cashFlow.toFixed(2)}`}
-              sub="unaccounted"
-              type={cashFlow >= 0 ? 'positive' : 'negative'} 
-            />
+            <StatCard label="Net income" value={`$${totalIncome.toFixed(2)}`} type="neutral" />
+            <StatCard label="Expenses" value={`$${totalExpenses.toFixed(2)}`} type="negative" />
+            <StatCard label="Saved" value={`$${totalSaved.toFixed(2)}`} type="positive" />
+            <StatCard label="Savings rate" value={`${savingsRate}%`} sub={totalSaved > 0 ? `${savingsRate}% of income` : 'add savings below'} type="positive" />
+            <StatCard label="Cash flow" value={`$${cashFlow.toFixed(2)}`} sub="unaccounted" type={cashFlow >= 0 ? 'positive' : 'negative'} />
           </div>
   
           {/* Income section */}
@@ -552,11 +529,9 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
           </div>
   
           {/* Savings */}
-          <SavingsSection 
-            month={month} 
-            onTotalChange={setTotalSaved}
-          />
-        </div>
-      </div>
+          <SavingsSection month={month} onTotalChange={setTotalSaved} />
+  
+        </div> 
+      </div> 
     );
   }

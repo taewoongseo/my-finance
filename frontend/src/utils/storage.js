@@ -84,3 +84,11 @@ export const getSavingsAccounts = () => {
       localStorage.setItem(INCOME_KEY, JSON.stringify(all));
     } catch (e) { console.error('Save income failed', e); }
   };
+
+  export const deleteMonthData = (monthKey) => {
+    try {
+      const all = JSON.parse(localStorage.getItem(MONTHS_KEY)) || {};
+      delete all[monthKey];
+      localStorage.setItem(MONTHS_KEY, JSON.stringify(all));
+    } catch (e) { console.error('Delete failed', e); }
+  };

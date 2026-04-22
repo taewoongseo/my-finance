@@ -25,6 +25,8 @@ Rules:
 - type is "debit" if money left the account, "credit" if money came in
 - INCLUDE all deposits, direct deposits, payroll, ACH credits — these are real transactions
 - INCLUDE Gusto, ADP, payroll deposits even if they are large amounts
+- SKIP transactions in "Payments and credits" sections — these are card payments not spending
+- SKIP any transaction described only as "PAYMENT", "payment", or "balance transfer" with no merchant name
 - Skip balance summaries, headers, totals — only individual transactions
 - Return ONLY the JSON array, no explanation, no markdown
 """

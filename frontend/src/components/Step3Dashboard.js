@@ -53,16 +53,152 @@ function aggregateByCategory(transactions, offsets) {
   return Object.values(totals);
 }
 
-function CategoryRow({ category, maxAmount }) {
+function TransactionRow({ transaction, onCategoryChange, onDelete, activeDropdown, setActiveDropdown }) {
+  const transactionId = transaction._id ?? transaction.id;
+  const showDropdown = activeDropdown === transactionId;
+
+  useEffect(() => {
+    if (!showDropdown) return;
+    const handleClick = () => setActiveDropdown(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [showDropdown]);
+
+  if (transaction.isOffset) {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        padding: '6px 16px', fontSize: 12,
+        borderLeft: '0.5px solid #222', marginLeft: 4,
+      }}>
+        <div>
+          <span style={{ color: '#555', fontFamily: 'monospace', marginRight: 10 }}>
+            {transaction.date}
+          </span>
+          <span style={{ color: '#8ab84a' }}>
+            {transaction.description} (offset)
+          </span>
+        </div>
+        <span style={{ fontFamily: 'monospace', color: '#c8f04a' }}>
+          -${Math.abs(transaction.amount).toFixed(2)}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '6px 16px', fontSize: 12,
+      borderLeft: '0.5px solid #222', marginLeft: 4,
+      position: 'relative',
+    }}>
+      {/* Date */}
+      <span style={{ color: '#555', fontFamily: 'monospace', minWidth: 80 }}>
+        {transaction.date}
+      </span>
+
+      {/* Description */}
+      <span style={{ color: '#888', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {transaction.description}
+      </span>
+
+      {/* Category dropdown */}
+      <div style={{ position: 'relative' }}>
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveDropdown(showDropdown ? null : transactionId);
+          }}
+          style={{
+            fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+            background: '#1a1a1a', border: '0.5px solid #2a2a2a', color: '#888',
+            display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = '#c8f04a'}
+          onMouseLeave={e => { if (!showDropdown) e.currentTarget.style.borderColor = '#2a2a2a'; }}
+        >
+          {transaction.category} ▾
+        </div>
+
+        {showDropdown && (
+          <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: 'absolute', right: 0, top: '100%', marginTop: 4,
+                background: '#111', border: '0.5px solid #2a2a2a', borderRadius: 10,
+                zIndex: 9999, minWidth: 200, maxHeight: 300, overflowY: 'auto',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}>
+            {CATEGORY_HIERARCHY.map(parent => (
+              <div key={parent.id}>
+                <div style={{
+                  fontSize: 10, color: '#444', padding: '8px 12px 4px',
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                }}>
+                  {parent.label}
+                </div>
+                {parent.subcategories.map(sub => (
+                  <div
+                    key={sub.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCategoryChange(transactionId, sub.label);
+                      setActiveDropdown(null)
+                    }}
+                    style={{
+                      padding: '7px 12px', fontSize: 12, cursor: 'pointer',
+                      color: transaction.category === sub.label ? '#c8f04a' : '#888',
+                      background: transaction.category === sub.label ? '#1a1f10' : 'transparent',
+                      transition: 'all 0.1s',
+                    }}
+                    onMouseEnter={e => {
+                      if (transaction.category !== sub.label)
+                        e.currentTarget.style.background = '#161616';
+                    }}
+                    onMouseLeave={e => {
+                      if (transaction.category !== sub.label)
+                        e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {sub.label}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Amount */}
+      <span style={{ fontFamily: 'monospace', color: '#666', minWidth: 60, textAlign: 'right' }}>
+        ${Math.abs(transaction.amount).toFixed(2)}
+      </span>
+
+      {/* Delete */}
+      <span
+        onClick={() => onDelete(transactionId)}
+        style={{ color: '#333', cursor: 'pointer', fontSize: 14, padding: '0 2px', transition: 'color 0.15s' }}
+        onMouseEnter={e => e.target.style.color = '#ff6b6b'}
+        onMouseLeave={e => e.target.style.color = '#333'}
+      >
+        ×
+      </span>
+    </div>
+  );
+}
+
+function CategoryRow({ category, maxAmount, onCategoryChange, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const [expandedSub, setExpandedSub] = useState(null);
+  const [activeDropdown, setActiveDropdown] = useState(null);
   const pct = maxAmount > 0 ? (category.total / maxAmount) * 100 : 0;
 
   if (category.total === 0) return null;
 
   return (
     <div style={{ marginBottom: 4 }}>
-      {/* Parent row */}
       <div
         onClick={() => setExpanded(!expanded)}
         style={{
@@ -86,7 +222,6 @@ function CategoryRow({ category, maxAmount }) {
         </span>
       </div>
 
-      {/* Subcategories */}
       {expanded && (
         <div style={{ marginLeft: 28, marginBottom: 4 }}>
           {category.subcategories.filter(s => s.total !== 0).map(sub => (
@@ -109,28 +244,17 @@ function CategoryRow({ category, maxAmount }) {
                 </span>
               </div>
 
-              {/* Individual transactions */}
               {expandedSub === sub.id && (
                 <div style={{ marginLeft: 32, marginBottom: 8 }}>
                   {sub.transactions.map((t, i) => (
-                    <div key={i} style={{
-                      display: 'flex', justifyContent: 'space-between',
-                      padding: '6px 16px', fontSize: 12,
-                      borderLeft: '0.5px solid #222', marginLeft: 4,
-                    }}>
-                      <div>
-                        <span style={{ color: '#555', fontFamily: 'monospace', marginRight: 10 }}>
-                          {t.date}
-                        </span>
-                        <span style={{ color: t.isOffset ? '#8ab84a' : '#888' }}>
-                          {t.description}
-                          {t.isOffset && ' (offset)'}
-                        </span>
-                      </div>
-                      <span style={{ fontFamily: 'monospace', color: t.isOffset ? '#c8f04a' : '#666' }}>
-                        {t.isOffset ? '-' : ''}${Math.abs(t.amount).toFixed(2)}
-                      </span>
-                    </div>
+                    <TransactionRow
+                      key={i}
+                      transaction={t}
+                      onCategoryChange={onCategoryChange}
+                      onDelete={onDelete}
+                      activeDropdown={activeDropdown}
+                      setActiveDropdown={setActiveDropdown}
+                    />
                   ))}
                   <div style={{
                     display: 'flex', justifyContent: 'space-between',
@@ -432,25 +556,40 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     );
   }
 
-  export default function Step3Dashboard({ finalTransactions, offsets, month, onBack, onReprocess }) {
+  export default function Step3Dashboard({ finalTransactions: initialTransactions, offsets, month, onBack, onReprocess }) {
+    const [transactions, setTransactions] = useState(initialTransactions);
     const [totalIncome, setTotalIncome] = useState(0);
     const [totalSaved, setTotalSaved] = useState(0);
-    
-    const categories = aggregateByCategory(finalTransactions, offsets || []);
+  
+    const handleCategoryChange = (transactionId, newCategory) => {
+      setTransactions(prev => prev.map(t =>
+        t._id === transactionId || t.id === transactionId
+          ? { ...t, category: newCategory }
+          : t
+      ));
+    };
+  
+    const handleDeleteTransaction = (transactionId) => {
+      setTransactions(prev => prev.filter(t =>
+        t._id !== transactionId && t.id !== transactionId
+      ));
+    };
+  
+    const categories = aggregateByCategory(transactions, offsets || []);
     const maxAmount = Math.max(...categories.map(c => c.total), 1);
     const totalExpenses = categories.reduce((sum, c) => sum + Math.max(c.total, 0), 0);
     const cashFlow = totalIncome - totalExpenses - totalSaved;
     const savingsRate = totalIncome > 0 ? ((totalSaved / totalIncome) * 100).toFixed(1) : '—';
   
-    const autoIncome = finalTransactions
+    const autoIncome = transactions
       .filter(t => t.type === 'credit' && t.category === 'Income')
       .reduce((sum, t) => sum + t.amount, 0);
   
     const monthLabel = new Date(month + '-15').toLocaleString('default', { month: 'long', year: 'numeric' });
   
     useEffect(() => {
-      saveMonthData(month, { transactions: finalTransactions, offsets, totalExpenses, totalIncome });
-    }, [month, finalTransactions, totalIncome]);
+      saveMonthData(month, { transactions, offsets, totalExpenses, totalIncome });
+    }, [month, transactions, totalIncome]);
   
     return (
       <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0ede8', fontFamily: "'DM Sans', sans-serif", display: 'grid', gridTemplateColumns: '200px 1fr' }}>
@@ -488,7 +627,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 500, letterSpacing: '-0.5px', marginBottom: 4 }}>{monthLabel}</h1>
-              <div style={{ fontSize: 12, color: '#555' }}>{finalTransactions.length} transactions</div>
+              <div style={{ fontSize: 12, color: '#555' }}>{transactions.length} transactions</div>
             </div>
             <button style={{
               background: '#c8f04a', color: '#0a0a0a', border: 'none',
@@ -524,7 +663,13 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
               </div>
             )}
             {categories.map(cat => (
-              <CategoryRow key={cat.id} category={cat} maxAmount={maxAmount} />
+              <CategoryRow
+                key={cat.id}
+                category={cat}
+                maxAmount={maxAmount}
+                onCategoryChange={handleCategoryChange}
+                onDelete={handleDeleteTransaction}
+              />
             ))}
           </div>
   

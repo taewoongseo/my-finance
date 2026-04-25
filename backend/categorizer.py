@@ -43,7 +43,9 @@ CATEGORY MAPPING RULES — follow strictly:
 - Amazon, AMZN, department stores, clothing = Shopping
 - Netflix, Spotify, Apple.com/bill, Webflow, Squarespace, Github, Notion, any SaaS = Subscription → confidence 95
 - Con Edison, CONED, electric, energy = Energy/Electricity → confidence 95
-- Verizon, AT&T, T-Mobile, phone carrier = Phone → confidence 95
+- AT&T, T-Mobile, phone carrier = Phone → confidence 95
+- Mint Mobile, Mint = Phone → confidence 95
+- Verizon = Wifi (internet/home service, NOT phone) → confidence 95
 - Birthday gifts, flowers, florist = Gift
 - Church, tithe, IN2 ONNURI, donation = Offering → confidence 90
 - Foreign transaction fee, bank fee = Bank fees → confidence 95

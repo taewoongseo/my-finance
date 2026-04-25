@@ -42,6 +42,24 @@ def filter_by_month(transactions: list[dict], month: str) -> list[dict]:
 
     return filtered
 
+def deduplicate_transactions(transactions: list[dict]) -> list[dict]:
+    seen = set()
+    unique = []
+    for t in transactions:
+        # key = date + amount + description + account
+        key = (
+            str(t.get('date', '')),
+            str(t.get('amount', '')),
+            str(t.get('description', '')).lower().strip(),
+            str(t.get('account', '')),
+        )
+        if key not in seen:
+            seen.add(key)
+            unique.append(t)
+        else:
+            print(f"  [dedup] Removed duplicate: {t.get('description')} ${t.get('amount')} on {t.get('date')}")
+    return unique
+
 def parse_file_sync(tmp_path: str, ext: str, account_name: str, account_type: str, month: str) -> list[dict]:
     """Synchronous parse function — runs in thread executor."""
     try:
@@ -121,7 +139,9 @@ async def upload_files(
         for tmp_path, ext, account_name, account_type in file_infos
     ]
     results = await asyncio.gather(*tasks)
-    all_transactions = [t for sublist in results for t in sublist]
+    all_transactions = [t for sublist in results for t in sublist]  
+    all_transactions = deduplicate_transactions(all_transactions)
+    print(f"After dedup: {len(all_transactions)} unique transactions")
 
     # categorize
     to_categorize = [t for t in all_transactions if not t.get('is_transfer')]

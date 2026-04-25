@@ -21,6 +21,7 @@ function aggregateByCategory(transactions, offsets) {
   // add transactions
   transactions.forEach(t => {
     if (t.type === 'credit') return; // skip income for spending
+    if (t.type === 'credit' && !t.isManual) return;
     if (t.category === 'Transfer' || t.category === 'Income') return;
 
     CATEGORY_HIERARCHY.forEach(parent => {
@@ -53,7 +54,7 @@ function aggregateByCategory(transactions, offsets) {
   return Object.values(totals);
 }
 
-function TransactionRow({ transaction, onCategoryChange, onDelete, activeDropdown, setActiveDropdown }) {
+function TransactionRow({ transaction, onCategoryChange, onDelete, onDeleteOffset, activeDropdown, setActiveDropdown }) {
   const transactionId = transaction._id ?? transaction.id;
   const showDropdown = activeDropdown === transactionId;
 
@@ -67,7 +68,7 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, activeDropdow
   if (transaction.isOffset) {
     return (
       <div style={{
-        display: 'flex', justifyContent: 'space-between',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '6px 16px', fontSize: 12,
         borderLeft: '0.5px solid #222', marginLeft: 4,
       }}>
@@ -78,10 +79,28 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, activeDropdow
           <span style={{ color: '#8ab84a' }}>
             {transaction.description} (offset)
           </span>
+          {transaction.isManual && (
+            <span style={{ fontSize: 10, background: '#1a1f10', border: '0.5px solid #2d3d18', color: '#8ab84a', padding: '2px 5px', borderRadius: 3, marginLeft: 6 }}>
+              manual
+            </span>
+          )}
         </div>
-        <span style={{ fontFamily: 'monospace', color: '#c8f04a' }}>
-          -${Math.abs(transaction.amount).toFixed(2)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: 'monospace', color: '#c8f04a' }}>
+            -${Math.abs(transaction.amount).toFixed(2)}
+          </span>
+          {(transaction.isManual ? onDelete : onDeleteOffset) && (
+            <span
+              onClick={() => {
+                const id = transaction._id ?? transaction.id;
+                transaction.isManual ? onDelete(id) : onDeleteOffset(id);
+              }}
+              style={{ color: '#333', cursor: 'pointer', fontSize: 14, transition: 'color 0.15s' }}
+              onMouseEnter={e => e.target.style.color = '#ff6b6b'}
+              onMouseLeave={e => e.target.style.color = '#333'}
+            >×</span>
+          )}
+        </div>
       </div>
     );
   }
@@ -101,6 +120,11 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, activeDropdow
       {/* Description */}
       <span style={{ color: '#888', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {transaction.description}
+        {transaction.isManual && (
+          <span style={{ fontSize: 10, background: '#1a1f10', border: '0.5px solid #2d3d18', color: '#8ab84a', padding: '2px 5px', borderRadius: 3, marginLeft: 6 }}>
+            manual
+          </span>
+        )}
       </span>
 
       {/* Category dropdown */}
@@ -189,7 +213,180 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, activeDropdow
   );
 }
 
-function CategoryRow({ category, maxAmount, onCategoryChange, onDelete }) {
+function AddTransactionForm({ month, onAdd, onCancel }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(`${month}-01`);
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('');
+  const [type, setType] = useState('expense'); // expense | income | offset
+
+  const isValid = date && description.trim() && parseFloat(amount) > 0 &&
+    (type === 'income' || category);
+
+  const handleAdd = () => {
+    if (!isValid) return;
+    const transaction = {
+      _id: `manual-${Date.now()}`,
+      id: `manual-${Date.now()}`,
+      date,
+      description: description.trim(),
+      amount: parseFloat(amount),
+      category: type === 'income' ? 'Income' : category,
+      type: type === 'income' ? 'credit' : 'debit',
+      account: 'Manual',
+      isManual: true,
+      isOffset: type === 'offset',
+      offset_category: type === 'offset' ? category : undefined,
+    };
+    onAdd(transaction);
+  };
+
+  const inputStyle = {
+    background: '#111', border: '0.5px solid #2a2a2a',
+    color: '#f0ede8', padding: '9px 12px', borderRadius: 8,
+    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    width: '100%', boxSizing: 'border-box',
+  };
+
+  const selectStyle = {
+    ...inputStyle,
+    appearance: 'none',
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 12px center',
+    backgroundSize: '12px',
+    cursor: 'pointer',
+  };
+
+  const labelStyle = { fontSize: 11, color: '#555', marginBottom: 6, display: 'block' };
+
+  return (
+    <div style={{
+      background: '#0d0d0d', border: '0.5px solid #2a2a2a',
+      borderRadius: 12, padding: 20, marginBottom: 16,
+    }}>
+      {/* Row 1 — Date + Amount */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>Date</label>
+          <input
+            style={{ ...inputStyle, fontFamily: 'monospace' }}
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>Amount</label>
+          <input
+            style={{ ...inputStyle, fontFamily: 'monospace' }}
+            type="number"
+            placeholder="0.00"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Row 2 — Description */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Description</label>
+        <input
+          style={inputStyle}
+          type="text"
+          placeholder="e.g. Farmer's market, Cash tip..."
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && isValid && handleAdd()}
+        />
+      </div>
+
+      {/* Row 3 — Type + Category */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <div>
+          <label style={labelStyle}>Type</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {['expense', 'offset'].map(t => (
+              <div
+                key={t}
+                onClick={() => setType(t)}
+                style={{
+                  flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 11,
+                  textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s',
+                  border: type === t
+                    ? t === 'expense' ? '0.5px solid #ff6b6b44' : '0.5px solid #c8f04a44'
+                    : '0.5px solid #2a2a2a',
+                  background: type === t
+                    ? t === 'expense' ? '#1a0f0f' : '#1a1f10'
+                    : 'transparent',
+                  color: type === t
+                    ? t === 'expense' ? '#ff8f8f' : '#c8f04a'
+                    : '#555',
+                }}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Category — hidden for income */}
+        {type !== 'income' && (
+          <div>
+            <label style={labelStyle}>
+              {type === 'offset' ? 'Offset category' : 'Category'}
+            </label>
+            <select
+              style={selectStyle}
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+            >
+              <option value="">Select...</option>
+              {CATEGORY_HIERARCHY.map(parent => (
+                <optgroup key={parent.id} label={parent.label}>
+                  {parent.subcategories.map(sub => (
+                    <option key={sub.id} value={sub.label}>{sub.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button
+          onClick={onCancel}
+          style={{
+            background: 'transparent', border: '0.5px solid #2a2a2a',
+            color: '#555', padding: '8px 16px', borderRadius: 8,
+            fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleAdd}
+          disabled={!isValid}
+          style={{
+            background: isValid ? '#c8f04a' : '#1a1a1a',
+            color: isValid ? '#0a0a0a' : '#444',
+            border: 'none', padding: '8px 20px', borderRadius: 8,
+            fontSize: 13, fontWeight: 500,
+            cursor: isValid ? 'pointer' : 'not-allowed',
+            fontFamily: 'inherit', transition: 'all 0.2s',
+          }}
+        >
+          Add transaction →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CategoryRow({ category, maxAmount, onCategoryChange, onDelete, onDeleteOffset }) {
   const [expanded, setExpanded] = useState(false);
   const [expandedSub, setExpandedSub] = useState(null);
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -252,6 +449,7 @@ function CategoryRow({ category, maxAmount, onCategoryChange, onDelete }) {
                       transaction={t}
                       onCategoryChange={onCategoryChange}
                       onDelete={onDelete}
+                      onDeleteOffset={onDeleteOffset}
                       activeDropdown={activeDropdown}
                       setActiveDropdown={setActiveDropdown}
                     />
@@ -570,12 +768,39 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     };
   
     const handleDeleteTransaction = (transactionId) => {
+      console.log('deleting:', transactionId);
+      console.log('transactions ids:', transactions.map(t => ({ _id: t._id, id: t.id })));
       setTransactions(prev => prev.filter(t =>
         t._id !== transactionId && t.id !== transactionId
       ));
     };
+
+    const [showAddForm, setShowAddForm] = useState(false);
+
+    const handleAddTransaction = (transaction) => {
+      if (transaction.isOffset) {
+        setTransactions(prev => [...prev, {
+          ...transaction,
+          amount: -transaction.amount,
+          category: transaction.offset_category,
+          type: 'debit',
+          isOffset: true,
+        }]);
+      } else {
+        setTransactions(prev => [...prev, transaction]);
+      }
+      setShowAddForm(false);
+    };
+
+    const [localOffsets, setLocalOffsets] = useState(offsets || []);
+
+    const handleDeleteOffset = (offsetId) => {
+      setLocalOffsets(prev => prev.filter(o => 
+        (o._id ?? o.id) !== offsetId
+      ));
+    };
   
-    const categories = aggregateByCategory(transactions, offsets || []);
+    const categories = aggregateByCategory(transactions, localOffsets || []);
     const maxAmount = Math.max(...categories.map(c => c.total), 1);
     const totalExpenses = categories.reduce((sum, c) => sum + Math.max(c.total, 0), 0);
     const cashFlow = totalIncome - totalExpenses - totalSaved;
@@ -588,8 +813,8 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const monthLabel = new Date(month + '-15').toLocaleString('default', { month: 'long', year: 'numeric' });
   
     useEffect(() => {
-      saveMonthData(month, { transactions, offsets, totalExpenses, totalIncome });
-    }, [month, transactions, totalIncome]);
+      saveMonthData(month, { transactions, offsets: localOffsets, totalExpenses, totalIncome });
+    }, [month, transactions, localOffsets, totalIncome]);
   
     return (
       <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0ede8', fontFamily: "'DM Sans', sans-serif", display: 'grid', gridTemplateColumns: '200px 1fr' }}>
@@ -656,8 +881,31 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
   
           {/* Spending breakdown */}
           <div style={{ background: '#111', border: '0.5px solid #1e1e1e', borderRadius: 16, padding: 24, marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#888', marginBottom: 20 }}>Spending breakdown</div>
-            {categories.filter(c => c.total > 0).length === 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#888' }}>Spending breakdown</div>
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                style={{
+                  fontSize: 12, background: 'transparent',
+                  border: `0.5px solid ${showAddForm ? '#c8f04a' : '#2a2a2a'}`,
+                  color: showAddForm ? '#c8f04a' : '#666',
+                  padding: '5px 12px', borderRadius: 6,
+                  cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                }}
+              >
+                + Add transaction
+              </button>
+            </div>
+
+            {showAddForm && (
+              <AddTransactionForm
+                month={month}
+                onAdd={handleAddTransaction}
+                onCancel={() => setShowAddForm(false)}
+              />
+            )}
+
+            {categories.filter(c => c.total > 0).length === 0 && !showAddForm && (
               <div style={{ fontSize: 13, color: '#444', textAlign: 'center', padding: '20px 0' }}>
                 No spending data yet
               </div>
@@ -669,6 +917,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
                 maxAmount={maxAmount}
                 onCategoryChange={handleCategoryChange}
                 onDelete={handleDeleteTransaction}
+                onDeleteOffset={handleDeleteOffset}
               />
             ))}
           </div>

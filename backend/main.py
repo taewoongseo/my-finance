@@ -1,11 +1,22 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Optional
 from dotenv import load_dotenv
 from pdf_parser import parse_statement, parse_venmo_csv, parse_generic_csv
 from categorizer import categorize_transactions
 from balancer import balance_transactions
-from datetime import datetime
+from plaid_client import client as plaid_client
+from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.products import Products
+from plaid.model.country_code import CountryCode
+from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.accounts_get_request import AccountsGetRequest
+from plaid.model.transactions_get_request import TransactionsGetRequest
+from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
+from pydantic import BaseModel
+from datetime import datetime, date
+import calendar
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import tempfile
@@ -78,6 +89,33 @@ def parse_file_sync(tmp_path: str, ext: str, account_name: str, account_type: st
         except:
             pass
 
+def fetch_plaid_transactions(access_token: str, account_id: str, account_name: str, account_type: str, month: str) -> list[dict]:
+    try:
+        year, mon = map(int, month.split('-'))
+        start = date(year, mon, 1)
+        end = date(year, mon, calendar.monthrange(year, mon)[1])
+        options = TransactionsGetRequestOptions(account_ids=[account_id])
+        response = plaid_client.transactions_get(
+            TransactionsGetRequest(access_token=access_token, start_date=start, end_date=end, options=options)
+        )
+        result = []
+        for t in response["transactions"]:
+            raw_amount = float(t["amount"])
+            result.append({
+                '_id': t["transaction_id"],
+                'date': str(t["date"]),
+                'description': t.get("merchant_name") or t["name"],
+                'amount': abs(raw_amount),
+                'type': 'debit' if raw_amount >= 0 else 'credit',
+                'account': account_name,
+                'account_type': account_type,
+            })
+        return result
+    except Exception as e:
+        print(f"[{account_name}] Plaid fetch error: {e}")
+        return []
+
+
 app = FastAPI()
 
 app.add_middleware(
@@ -88,19 +126,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class LinkTokenRequest(BaseModel):
+    access_token: Optional[str] = None
+
+class ExchangeTokenRequest(BaseModel):
+    public_token: str
+
+
 @app.get("/")
 def root():
     return {"status": "myfinance backend running"}
 
+
+@app.post("/plaid/link-token")
+async def create_link_token(body: LinkTokenRequest = None):
+    try:
+        kwargs = dict(
+            client_name="myfinance",
+            country_codes=[CountryCode("US")],
+            language="en",
+            user=LinkTokenCreateRequestUser(client_user_id="myfinance-user"),
+        )
+        if body and body.access_token:
+            kwargs["access_token"] = body.access_token
+        else:
+            kwargs["products"] = [Products("transactions")]
+        request = LinkTokenCreateRequest(**kwargs)
+        response = plaid_client.link_token_create(request)
+        return {"link_token": response["link_token"]}
+    except Exception as e:
+        return {"error": str(e)}, 502
+
+
+@app.post("/plaid/exchange-token")
+async def exchange_token(body: ExchangeTokenRequest):
+    try:
+        exchange_response = plaid_client.item_public_token_exchange(
+            ItemPublicTokenExchangeRequest(public_token=body.public_token)
+        )
+        access_token = exchange_response["access_token"]
+
+        accounts_response = plaid_client.accounts_get(
+            AccountsGetRequest(access_token=access_token)
+        )
+        accounts = [
+            {
+                "account_id": a["account_id"],
+                "name": a["name"],
+                "official_name": a.get("official_name"),
+                "type": str(a["type"]),
+                "subtype": str(a["subtype"]),
+            }
+            for a in accounts_response["accounts"]
+        ]
+        return {"access_token": access_token, "accounts": accounts}
+    except Exception as e:
+        return {"error": str(e)}, 502
+
+
 @app.post("/upload")
 async def upload_files(
-    files: List[UploadFile] = File(...),
-    account_names: List[str] = Form(...),
-    account_types: List[str] = Form(...),
+    files: Optional[List[UploadFile]] = File(default=None),
+    account_names: Optional[List[str]] = Form(default=None),
+    account_types: Optional[List[str]] = Form(default=None),
     month: str = Form(...),
     savings_account_names: str = Form(default='[]'),
+    plaid_accounts: str = Form(default='[]'),
 ):
     savings_names = json.loads(savings_account_names)
+    plaid_account_list = json.loads(plaid_accounts)
+    files = files or []
+    account_names = account_names or []
+    account_types = account_types or []
     seen_file_hashes = set()
 
     # read all files first (must be done in async context)
@@ -132,6 +229,17 @@ async def upload_files(
     ]
     results = await asyncio.gather(*tasks)
     all_transactions = [t for sublist in results for t in sublist]
+
+    # fetch Plaid transactions for connected accounts (parallel, non-blocking)
+    if plaid_account_list:
+        plaid_tasks = [
+            loop.run_in_executor(executor, fetch_plaid_transactions,
+                pa['access_token'], pa['account_id'], pa['account_name'], pa['account_type'], month)
+            for pa in plaid_account_list
+        ]
+        plaid_results = await asyncio.gather(*plaid_tasks)
+        for txns in plaid_results:
+            all_transactions.extend(txns)
 
     # categorize
     to_categorize = [t for t in all_transactions if not t.get('is_transfer')]

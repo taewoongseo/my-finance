@@ -27,6 +27,12 @@ export const deleteAccount = (accountId) => {
   return updated;
 };
 
+export const updateAccount = (id, fields) => {
+  const updated = getAccounts().map(a => a.id === id ? { ...a, ...fields } : a);
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(updated));
+  return updated;
+};
+
 // ── Month data ────────────────────────────
 export const getMonthData = (monthKey) => {
   try {

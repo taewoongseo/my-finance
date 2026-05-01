@@ -106,7 +106,7 @@ function UploadScreen() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  const handleProcess = async ({ month, uploads, savingsAccounts }) => {
+  const handleProcess = async ({ month, uploads, plaidAccounts, savingsAccounts }) => {
     setLoading(true);
     const formData = new FormData();
     uploads.forEach(({ account, file }) => {
@@ -117,6 +117,13 @@ function UploadScreen() {
     formData.append('month', month);
     const savingsNames = (savingsAccounts || []).map(a => a.name);
     formData.append('savings_account_names', JSON.stringify(savingsNames));
+    const plaidPayload = (plaidAccounts || []).map(a => ({
+      access_token: a.plaidAccessToken,
+      account_id: a.plaidAccountId,
+      account_name: a.name,
+      account_type: a.type,
+    }));
+    formData.append('plaid_accounts', JSON.stringify(plaidPayload));
 
     try {
       const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData });

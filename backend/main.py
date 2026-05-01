@@ -12,6 +12,7 @@ import tempfile
 import os
 import json
 import uvicorn
+import hashlib
 
 load_dotenv()
 
@@ -42,23 +43,6 @@ def filter_by_month(transactions: list[dict], month: str) -> list[dict]:
 
     return filtered
 
-def deduplicate_transactions(transactions: list[dict]) -> list[dict]:
-    seen = set()
-    unique = []
-    for t in transactions:
-        # key = date + amount + description + account
-        key = (
-            str(t.get('date', '')),
-            str(t.get('amount', '')),
-            str(t.get('description', '')).lower().strip(),
-            str(t.get('account', '')),
-        )
-        if key not in seen:
-            seen.add(key)
-            unique.append(t)
-        else:
-            print(f"  [dedup] Removed duplicate: {t.get('description')} ${t.get('amount')} on {t.get('date')}")
-    return unique
 
 def parse_file_sync(tmp_path: str, ext: str, account_name: str, account_type: str, month: str) -> list[dict]:
     """Synchronous parse function — runs in thread executor."""
@@ -117,6 +101,7 @@ async def upload_files(
     savings_account_names: str = Form(default='[]'),
 ):
     savings_names = json.loads(savings_account_names)
+    seen_file_hashes = set()
 
     # read all files first (must be done in async context)
     file_infos = []
@@ -126,6 +111,13 @@ async def upload_files(
         ext = os.path.splitext(file.filename)[1].lower()
 
         contents = await file.read()
+
+        file_hash = hashlib.md5(contents).hexdigest()
+        if file_hash in seen_file_hashes:
+            print(f"  [dedup] Skipping duplicate file: {file.filename}")
+            continue
+        seen_file_hashes.add(file_hash)
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(contents)
             tmp_path = tmp.name
@@ -139,9 +131,7 @@ async def upload_files(
         for tmp_path, ext, account_name, account_type in file_infos
     ]
     results = await asyncio.gather(*tasks)
-    all_transactions = [t for sublist in results for t in sublist]  
-    all_transactions = deduplicate_transactions(all_transactions)
-    print(f"After dedup: {len(all_transactions)} unique transactions")
+    all_transactions = [t for sublist in results for t in sublist]
 
     # categorize
     to_categorize = [t for t in all_transactions if not t.get('is_transfer')]
@@ -165,6 +155,9 @@ async def upload_files(
 
     needs_review = [t for t in clean if t.get('needs_review')] + flagged
     auto_approved = [t for t in clean if not t.get('needs_review')]
+
+    rent_transactions = [t for t in clean if 'rent' in t.get('description', '').lower() or t.get('category') == 'Rent']
+    print(f"RENT DEBUG: {rent_transactions}")
 
     return {
         'transactions': clean,

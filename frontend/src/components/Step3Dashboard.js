@@ -20,8 +20,7 @@ function aggregateByCategory(transactions, offsets) {
 
   // add transactions
   transactions.forEach(t => {
-    if (t.type === 'credit') return; // skip income for spending
-    if (t.type === 'credit' && !t.isManual) return;
+    if (t.type === 'credit' && t.category !== 'Rent') return;
     if (t.category === 'Transfer' || t.category === 'Income') return;
 
     CATEGORY_HIERARCHY.forEach(parent => {

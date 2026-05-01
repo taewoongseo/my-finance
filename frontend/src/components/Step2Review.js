@@ -181,9 +181,9 @@ function FlagCard({ transaction, onConfirm }) {
             style={{
               fontSize: 12, padding: '5px 11px', borderRadius: 6,
               cursor: 'pointer', transition: 'all 0.15s',
-              border: selected === 'Income' ? '0.5px solid #c8f04a' : '0.5px solid #2d3d18',
-              color: selected === 'Income' ? '#c8f04a' : '#8ab84a',
-              background: selected === 'Income' ? '#1a1f10' : '#111810',
+              border: selected === 'Income' ? '0.5px solid #c8f04a' : '0.5px solid #2a2a2a',
+              color: selected === 'Income' ? '#c8f04a' : '#666',
+              background: selected === 'Income' ? '#1a1f10' : '#0d0d0d',
             }}
           >
             Income
@@ -216,7 +216,7 @@ function FlagCard({ transaction, onConfirm }) {
 
 function FlipCard({ transaction, onConfirm }) {
   const [selected, setSelected] = useState(
-    ALL_SUBCATEGORIES.find(c => c.label === transaction.category)
+    ALL_SUBCATEGORIES.find(c => c.label === transaction.category) && transaction.category !== 'Misc. Spending'
       ? transaction.category
       : null
   );

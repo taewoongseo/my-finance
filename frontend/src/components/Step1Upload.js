@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import { ACCOUNT_TYPES } from '../config';
 import { getAccounts, saveAccount, deleteAccount, updateAccount, getSavingsAccounts } from '../utils/storage';
@@ -36,12 +36,15 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
 
   return (
     <div style={{ background: '#111', border: `0.5px solid ${borderColor}`, borderRadius: 12, padding: '14px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: (files.length > 0 || isPlaidMode) ? 10 : 0 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 500 }}>{account.name}</div>
+
+      {/* Main row: account info · action · delete */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: '-0.2px' }}>{account.name}</div>
           <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{account.type}</div>
         </div>
 
+        {/* Action button — compact, right of name */}
         {!isPlaidMode && (
           <>
             <div
@@ -50,13 +53,14 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
               onDrop={handleDrop}
               onClick={() => document.getElementById(inputId).click()}
               style={{
-                padding: '7px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
                 border: `0.5px dashed ${dragging ? '#c8f04a' : '#2a2a2a'}`,
-                background: dragging ? '#1a1f10' : '#0d0d0d',
-                color: '#555', transition: 'all 0.15s', whiteSpace: 'nowrap',
+                background: dragging ? '#1a1f10' : 'transparent',
+                color: dragging ? '#c8f04a' : '#555',
+                transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
-              + Add PDF
+              + PDF
             </div>
             <input id={inputId} type="file" accept=".pdf,.csv" multiple style={{ display: 'none' }} onChange={handleInput} />
           </>
@@ -66,18 +70,18 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
           <button
             onClick={() => onConnect(account.id)}
             style={{
-              padding: '7px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-              border: '0.5px solid #3a4a2a', background: '#0d0d0d', color: '#8ab84a',
-              fontFamily: 'inherit', whiteSpace: 'nowrap',
+              padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+              border: '0.5px solid #3a4a2a', background: 'transparent', color: '#8ab84a',
+              fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0,
             }}
           >
-            Connect via Plaid
+            Connect →
           </button>
         )}
 
         {isPlaidConnected && (
-          <span style={{ fontSize: 11, color: '#8ab84a', whiteSpace: 'nowrap' }}>
-            ✓ {account.plaidAccountName}
+          <span style={{ fontSize: 12, color: '#6a9a3a', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            ● Connected
           </span>
         )}
 
@@ -85,25 +89,40 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
           <button
             onClick={() => onReconnect(account.id)}
             style={{
-              padding: '7px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-              border: '0.5px solid #ff6b6b44', background: '#0d0d0d', color: '#ff6b6b',
-              fontFamily: 'inherit', whiteSpace: 'nowrap',
+              padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+              border: '0.5px solid #ff6b6b44', background: 'transparent', color: '#ff6b6b',
+              fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0,
             }}
           >
-            Reconnect
+            Reconnect →
           </button>
         )}
 
         <div
           onClick={() => onDelete(account.id)}
-          style={{ color: '#333', cursor: 'pointer', fontSize: 16, padding: '0 4px', transition: 'color 0.15s' }}
+          style={{ color: '#2e2e2e', cursor: 'pointer', fontSize: 16, padding: '0 2px', transition: 'color 0.15s', flexShrink: 0 }}
           onMouseEnter={e => e.target.style.color = '#ff6b6b'}
-          onMouseLeave={e => e.target.style.color = '#333'}
+          onMouseLeave={e => e.target.style.color = '#2e2e2e'}
         >×</div>
       </div>
 
+      {/* Connected account name — plain subrow, not a button */}
+      {isPlaidConnected && (
+        <div style={{ fontSize: 12, color: '#444', marginTop: 6 }}>
+          {account.plaidAccountName}
+        </div>
+      )}
+
+      {/* Error subrow */}
+      {isPlaidError && (
+        <div style={{ fontSize: 11, color: '#ff6b6b66', marginTop: 6 }}>
+          Bank connection lost — reconnect to continue
+        </div>
+      )}
+
+      {/* File chips */}
       {!isPlaidMode && files.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
           {files.map((file, i) => (
             <div key={i} style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -123,19 +142,14 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
         </div>
       )}
 
-      {isPlaidError && (
-        <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 2 }}>
-          Bank connection lost — reconnect to continue fetching transactions
-        </div>
-      )}
-
+      {/* Switch source link */}
       <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
         {!isPlaidMode && (
           <span
             onClick={() => onSwitchToPlaid(account.id)}
-            style={{ fontSize: 11, color: '#444', cursor: 'pointer', transition: 'color 0.15s' }}
+            style={{ fontSize: 11, color: '#333', cursor: 'pointer', transition: 'color 0.15s' }}
             onMouseEnter={e => e.target.style.color = '#8ab84a'}
-            onMouseLeave={e => e.target.style.color = '#444'}
+            onMouseLeave={e => e.target.style.color = '#333'}
           >
             Use Plaid instead →
           </span>
@@ -143,11 +157,11 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
         {isPlaidMode && (
           <span
             onClick={() => onSwitchToManual(account.id)}
-            style={{ fontSize: 11, color: '#444', cursor: 'pointer', transition: 'color 0.15s' }}
+            style={{ fontSize: 11, color: '#333', cursor: 'pointer', transition: 'color 0.15s' }}
             onMouseEnter={e => e.target.style.color = '#888'}
-            onMouseLeave={e => e.target.style.color = '#444'}
+            onMouseLeave={e => e.target.style.color = '#333'}
           >
-            ← Switch to manual upload
+            ← Switch to manual
           </span>
         )}
       </div>
@@ -220,9 +234,12 @@ export default function Step1Upload({ onProcess, loading }) {
     onExit: onPlaidExit,
   });
 
+  const openPlaidLinkRef = useRef(openPlaidLink);
+  openPlaidLinkRef.current = openPlaidLink;
+
   useEffect(() => {
-    if (linkToken && plaidReady) openPlaidLink();
-  }, [linkToken, plaidReady]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (linkToken && plaidReady) openPlaidLinkRef.current();
+  }, [linkToken, plaidReady, openPlaidLink]);
 
   const handleConnect = async (accountId) => {
     try {
@@ -296,7 +313,7 @@ export default function Step1Upload({ onProcess, loading }) {
   };
 
   const handleSwitchToManual = (id) => {
-    setAccounts(updateAccount(id, { dataSource: 'manual', plaidAccessToken: null, plaidAccountId: null, plaidAccountName: null }));
+    setAccounts(updateAccount(id, { dataSource: 'manual' }));
   };
 
   const handleFileDrop = (accountId, file) => {
@@ -315,7 +332,7 @@ export default function Step1Upload({ onProcess, loading }) {
 
   const handleProcess = () => {
     const uploadedAccounts = accounts
-      .filter(a => uploads[a.id]?.length > 0)
+      .filter(a => uploads[a.id]?.length > 0 && a.dataSource !== 'plaid')
       .flatMap(a => uploads[a.id].map(file => ({ account: a, file })));
     const plaidAccounts = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccessToken);
     if (!uploadedAccounts.length && !plaidAccounts.length) return;
@@ -323,10 +340,12 @@ export default function Step1Upload({ onProcess, loading }) {
     onProcess({ month: selectedMonth, uploads: uploadedAccounts, plaidAccounts, savingsAccounts });
   };
 
-  const uploadCount = accounts.filter(a => uploads[a.id]?.length > 0).length;
+  const uploadCount = accounts.filter(a => uploads[a.id]?.length > 0 && a.dataSource !== 'plaid').length;
   const plaidConnectedCount = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccessToken).length;
   const readyCount = uploadCount + plaidConnectedCount;
-  const totalFiles = Object.values(uploads).reduce((sum, files) => sum + (files?.length || 0), 0);
+  const totalFiles = accounts
+    .filter(a => a.dataSource !== 'plaid')
+    .reduce((sum, a) => sum + (uploads[a.id]?.length || 0), 0);
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0ede8', fontFamily: "'DM Sans', sans-serif", display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>

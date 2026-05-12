@@ -82,7 +82,7 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
             </button>
             {unmappedAccounts?.length > 0 && (
               <button
-                onClick={onReuseAccount}
+                onClick={() => onReuseAccount(account.id)}
                 style={{
                   padding: '4px 0', fontSize: 11, cursor: 'pointer',
                   border: 'none', background: 'transparent', color: '#4a6a3a',
@@ -255,6 +255,7 @@ export default function Step1Upload({ onProcess, loading }) {
       } else {
         setPlaidPickerAccounts(plaidAccounts);
       }
+      authFetch(`${API_URL}/plaid/accounts`, getToken).then(r => r.json()).then(d => setStoredPlaidAccounts(d.accounts || [])).catch(() => {});
     } catch (e) {
       console.error('Plaid exchange error:', e);
       setConnectingAccountId(null);
@@ -325,6 +326,7 @@ export default function Step1Upload({ onProcess, loading }) {
     setPlaidPickerAccounts([]);
     setConnectingAccountId(null);
     setLinkToken(null);
+    authFetch(`${API_URL}/plaid/accounts`, getToken).then(r => r.json()).then(d => setStoredPlaidAccounts(d.accounts || [])).catch(() => {});
   };
 
   const handleAddAccount = async () => {
@@ -381,7 +383,7 @@ export default function Step1Upload({ onProcess, loading }) {
   };
 
   const mappedPlaidIds = new Set(accounts.map(a => a.plaidAccountId).filter(Boolean));
-  const unmappedAccounts = storedPlaidAccounts.filter(a => !mappedPlaidIds.has(a.account_id));
+  const unmappedAccounts = storedPlaidAccounts.filter(a => !mappedPlaidIds.has(a.account_id) && a.name);
 
   const uploadCount = accounts.filter(a => uploads[a.id]?.length > 0 && a.dataSource !== 'plaid').length;
   const plaidConnectedCount = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccountId).length;
@@ -442,7 +444,7 @@ export default function Step1Upload({ onProcess, loading }) {
               onSwitchToPlaid={handleSwitchToPlaid}
               onSwitchToManual={handleSwitchToManual}
               unmappedAccounts={unmappedAccounts}
-              onReuseAccount={() => setPlaidPickerAccounts(unmappedAccounts)}
+              onReuseAccount={(accountId) => { setConnectingAccountId(accountId); setPlaidPickerAccounts(unmappedAccounts); }}
             />
           ))}
         </div>
@@ -554,9 +556,11 @@ export default function Step1Upload({ onProcess, loading }) {
                   {pa.official_name && pa.official_name !== pa.name && (
                     <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{pa.official_name}</div>
                   )}
-                  <div style={{ fontSize: 11, color: '#444', marginTop: 2, textTransform: 'capitalize' }}>
-                    {pa.subtype} · {pa.type}
-                  </div>
+                  {(pa.subtype || pa.type) && (
+                    <div style={{ fontSize: 11, color: '#444', marginTop: 2, textTransform: 'capitalize' }}>
+                      {[pa.subtype, pa.type].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -19,16 +19,16 @@ export const saveAccounts = async (accounts, getToken) => {
   } catch (e) { console.error('saveAccounts failed', e); }
 };
 
-export const saveAccount = async (account, getToken) => {
-  const accounts = await getAccounts(getToken);
+export const saveAccount = async (account, getToken, currentAccounts = null) => {
+  const accounts = currentAccounts ?? await getAccounts(getToken);
   if (accounts.find(a => a.id === account.id)) return accounts;
   const updated = [...accounts, account];
   await saveAccounts(updated, getToken);
   return updated;
 };
 
-export const deleteAccount = async (accountId, getToken) => {
-  const accounts = await getAccounts(getToken);
+export const deleteAccount = async (accountId, getToken, currentAccounts = null) => {
+  const accounts = currentAccounts ?? await getAccounts(getToken);
   const updated = accounts.filter(a => a.id !== accountId);
   await saveAccounts(updated, getToken);
   return updated;

@@ -336,14 +336,14 @@ export default function Step1Upload({ onProcess, loading }) {
       name: newAccount.name.trim(),
       type: newAccount.type,
     };
-    const updated = await saveAccount(account, getToken);
+    const updated = await saveAccount(account, getToken, accounts);
     setAccounts(updated);
     setNewAccount({ name: '', type: 'Credit Card' });
     setShowAddAccount(false);
   };
 
   const handleDeleteAccount = async (id) => {
-    const updated = await deleteAccount(id, getToken);
+    const updated = await deleteAccount(id, getToken, accounts);
     setAccounts(updated);
     const newUploads = { ...uploads };
     delete newUploads[id];

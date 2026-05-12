@@ -819,10 +819,8 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const cashFlow = totalIncome - totalExpenses - totalSaved;
     const savingsRate = totalIncome > 0 ? ((totalSaved / totalIncome) * 100).toFixed(1) : '—';
   
-    const PAYROLL_KEYWORDS = ['gusto', 'adp', 'paychex', 'direct deposit', 'payroll', 'intuit payroll'];
-    const incomeCredits = transactions.filter(t => t.type === 'credit' && t.category === 'Income');
-    const autoIncome = incomeCredits
-      .filter(t => PAYROLL_KEYWORDS.some(k => t.description?.toLowerCase().includes(k)))
+    const autoIncome = transactions
+      .filter(t => t.type === 'credit' && t.category === 'Income')
       .reduce((sum, t) => sum + t.amount, 0);
   
     const monthLabel = new Date(month + '-15').toLocaleString('default', { month: 'long', year: 'numeric' });

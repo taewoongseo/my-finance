@@ -237,6 +237,9 @@ async def create_link_token(
             language="en",
             user=LinkTokenCreateRequestUser(client_user_id=user_id),
         )
+        redirect_uri = os.getenv("PLAID_REDIRECT_URI")
+        if redirect_uri:
+            kwargs["redirect_uri"] = redirect_uri
         if body and body.access_token:
             kwargs["access_token"] = body.access_token
         elif body and body.account_id:

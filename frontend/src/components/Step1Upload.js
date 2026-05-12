@@ -183,9 +183,26 @@ export default function Step1Upload({ onProcess, loading }) {
   const [connectingAccountId, setConnectingAccountId] = useState(null);
   const [isReconnectMode, setIsReconnectMode] = useState(false);
   const [plaidPickerAccounts, setPlaidPickerAccounts] = useState([]);
+  const [receivedRedirectUri, setReceivedRedirectUri] = useState(null);
 
   useEffect(() => {
     getAccounts(getToken).then(setAccounts);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('oauth_state_id')) {
+      const savedId = sessionStorage.getItem('plaid_connecting_id');
+      if (savedId) {
+        setConnectingAccountId(savedId);
+        setReceivedRedirectUri(window.location.href);
+        authFetch(`${API_URL}/plaid/link-token`, getToken, { method: 'POST' })
+          .then(r => r.json())
+          .then(({ link_token }) => setLinkToken(link_token))
+          .catch(e => console.error('Plaid OAuth link-token error:', e));
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
   }, []);
 
   const onPlaidSuccess = useCallback(async (publicToken) => {
@@ -233,6 +250,7 @@ export default function Step1Upload({ onProcess, loading }) {
     token: linkToken,
     onSuccess: onPlaidSuccess,
     onExit: onPlaidExit,
+    ...(receivedRedirectUri ? { receivedRedirectUri } : {}),
   });
 
   const openPlaidLinkRef = useRef(openPlaidLink);
@@ -244,6 +262,7 @@ export default function Step1Upload({ onProcess, loading }) {
 
   const handleConnect = async (accountId) => {
     try {
+      sessionStorage.setItem('plaid_connecting_id', accountId);
       setConnectingAccountId(accountId);
       setIsReconnectMode(false);
       const res = await authFetch(`${API_URL}/plaid/link-token`, getToken, { method: 'POST' });

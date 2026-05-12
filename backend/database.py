@@ -69,7 +69,7 @@ def delete_month_data(user_id: str, month_key: str) -> None:
             )
 
 
-def get_plaid_token(user_id: str, account_id: str) -> str | None:
+def get_plaid_token(user_id: str, account_id: str) -> "str | None":
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(

@@ -75,7 +75,7 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
               style={{
                 padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
                 border: '0.5px solid #3a4a2a', background: 'transparent', color: '#8ab84a',
-                fontFamily: 'inherit', whiteSpace: 'nowrap',
+                fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 500,
               }}
             >
               Connect a new bank →
@@ -84,9 +84,10 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
               <button
                 onClick={onReuseAccount}
                 style={{
-                  padding: '6px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
-                  border: '0.5px solid #2a3a2a', background: 'transparent', color: '#556644',
+                  padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                  border: 'none', background: 'transparent', color: '#4a6a3a',
                   fontFamily: 'inherit', whiteSpace: 'nowrap',
+                  textDecoration: 'underline', textUnderlineOffset: 2,
                 }}
               >
                 Reuse a connected bank →
@@ -203,7 +204,7 @@ export default function Step1Upload({ onProcess, loading }) {
   useEffect(() => {
     Promise.all([
       getAccounts(getToken),
-      authFetch(`${API_URL}/plaid/accounts`, getToken).then(r => r.json()).then(d => d.accounts || []),
+      authFetch(`${API_URL}/plaid/accounts`, getToken).then(r => r.json()).then(d => d.accounts || []).catch(() => []),
     ]).then(([accts, plaidAccts]) => {
       setAccounts(accts);
       setStoredPlaidAccounts(plaidAccts);

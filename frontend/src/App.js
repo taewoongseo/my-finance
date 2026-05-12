@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
-import { ClerkProvider, SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
+import { ClerkProvider, SignedIn, SignedOut, useAuth, AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
 import Step1Upload from './components/Step1Upload';
 import Step2Review from './components/Step2Review';
 import Step3Dashboard from './components/Step3Dashboard';
@@ -210,18 +210,13 @@ function DashboardScreen() {
 
 // ── SSO Callback ───────────────────────────────────────────
 function SSOCallback() {
-  const { handleRedirectCallback } = useAuth();
-  const navigate = useNavigate();
-  useEffect(() => {
-    handleRedirectCallback().then(() => navigate('/'));
-  }, []);
-  return null;
+  return <AuthenticateWithRedirectCallback />;
 }
 
 // ── App Shell ──────────────────────────────────────────────
 export default function App() {
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} afterSignInUrl="/" afterSignUpUrl="/">
       <BrowserRouter>
         <Routes>
           <Route path="/sso-callback" element={<SSOCallback />} />

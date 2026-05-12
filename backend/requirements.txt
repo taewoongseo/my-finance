@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pdfplumber
+openai
+plaid-python
+psycopg2-binary
+httpx
+python-jose[cryptography]
+python-multipart

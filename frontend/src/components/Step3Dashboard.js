@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { CATEGORY_HIERARCHY } from '../config';
 import { saveMonthData, getSavingsAccounts, saveSavingsAccount, deleteSavingsAccount, getMonthIncome, saveMonthIncome } from '../utils/storage';
 
@@ -487,22 +488,24 @@ function StatCard({ label, value, sub, type = 'neutral' }) {
 }
 
 function SavingsSection({ month, onTotalChange }) {
+  const { getToken } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [amounts, setAmounts] = useState({});
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
 
   useEffect(() => {
-    const saved = getSavingsAccounts();
-    setAccounts(saved);
-    const savedAmounts = JSON.parse(localStorage.getItem(`savings_amounts_${month}`) || '{}');
-    setAmounts(savedAmounts);
+    getSavingsAccounts(getToken).then(saved => {
+      setAccounts(saved);
+      const savedAmounts = JSON.parse(localStorage.getItem(`savings_amounts_${month}`) || '{}');
+      setAmounts(savedAmounts);
+    });
   }, [month]);
 
-  const handleAddAccount = () => {
+  const handleAddAccount = async () => {
     if (!newName.trim()) return;
     const account = { id: Date.now().toString(), name: newName.trim() };
-    const updated = saveSavingsAccount(account);
+    const updated = await saveSavingsAccount(account, getToken);
     setAccounts(updated);
     setNewName('');
     setShowAdd(false);
@@ -514,8 +517,8 @@ function SavingsSection({ month, onTotalChange }) {
     localStorage.setItem(`savings_amounts_${month}`, JSON.stringify(updated));
   };
 
-  const handleDelete = (id) => {
-    const updated = deleteSavingsAccount(id);
+  const handleDelete = async (id) => {
+    const updated = await deleteSavingsAccount(id, getToken);
     setAccounts(updated);
   };
 
@@ -603,34 +606,38 @@ function SavingsSection({ month, onTotalChange }) {
 }
 
 function IncomeSection({ month, autoIncome, onTotalChange }) {
-    const [income, setIncome] = useState(() => getMonthIncome(month));
+    const { getToken } = useAuth();
+    const [income, setIncome] = useState({ directDeposit: 0, other: [] });
     const [showAdd, setShowAdd] = useState(false);
     const [newLabel, setNewLabel] = useState('');
-  
+
     useEffect(() => {
-      // pre-populate direct deposit from auto-detected
+      getMonthIncome(month, getToken).then(setIncome);
+    }, [month]);
+
+    useEffect(() => {
       if (autoIncome > 0 && income.directDeposit === 0) {
         const updated = { ...income, directDeposit: autoIncome };
         setIncome(updated);
-        saveMonthIncome(month, updated);
+        saveMonthIncome(month, updated, getToken);
       }
     }, [autoIncome]);
-  
+
     const handleDirectDepositChange = (val) => {
       const updated = { ...income, directDeposit: parseFloat(val) || 0 };
       setIncome(updated);
-      saveMonthIncome(month, updated);
+      saveMonthIncome(month, updated, getToken);
     };
-  
+
     const handleOtherChange = (id, val) => {
       const updated = {
         ...income,
         other: income.other.map(o => o.id === id ? { ...o, amount: parseFloat(val) || 0 } : o)
       };
       setIncome(updated);
-      saveMonthIncome(month, updated);
+      saveMonthIncome(month, updated, getToken);
     };
-  
+
     const handleAddOther = () => {
       if (!newLabel.trim()) return;
       const updated = {
@@ -638,15 +645,15 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
         other: [...income.other, { id: Date.now().toString(), label: newLabel.trim(), amount: 0 }]
       };
       setIncome(updated);
-      saveMonthIncome(month, updated);
+      saveMonthIncome(month, updated, getToken);
       setNewLabel('');
       setShowAdd(false);
     };
-  
+
     const handleDeleteOther = (id) => {
       const updated = { ...income, other: income.other.filter(o => o.id !== id) };
       setIncome(updated);
-      saveMonthIncome(month, updated);
+      saveMonthIncome(month, updated, getToken);
     };
   
     const total = income.directDeposit + income.other.reduce((s, o) => s + o.amount, 0);
@@ -754,6 +761,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
   }
 
   export default function Step3Dashboard({ finalTransactions: initialTransactions, offsets, month, onBack, onReprocess }) {
+    const { getToken } = useAuth();
     const [transactions, setTransactions] = useState(initialTransactions);
     const [totalIncome, setTotalIncome] = useState(0);
     const [totalSaved, setTotalSaved] = useState(0);
@@ -812,7 +820,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const monthLabel = new Date(month + '-15').toLocaleString('default', { month: 'long', year: 'numeric' });
   
     useEffect(() => {
-      saveMonthData(month, { transactions, offsets: localOffsets, totalExpenses, totalIncome });
+      saveMonthData(month, { transactions, offsets: localOffsets, totalExpenses, totalIncome }, getToken);
     }, [month, transactions, localOffsets, totalIncome]);
   
     return (

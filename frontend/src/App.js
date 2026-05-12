@@ -1,17 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
+import { ClerkProvider, SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
 import Step1Upload from './components/Step1Upload';
 import Step2Review from './components/Step2Review';
 import Step3Dashboard from './components/Step3Dashboard';
+import LoginScreen from './components/LoginScreen';
 import { saveMonthData, getMonthData, getAllMonths, deleteMonthData } from './utils/storage';
+
+const CLERK_PUBLISHABLE_KEY = process.env.REACT_APP_CLERK_PUBLISHABLE_KEY;
 
 // ── Home Screen ────────────────────────────────────────────
 function HomeScreen() {
   const navigate = useNavigate();
   const [savedMonths, setSavedMonths] = useState({});
+  const { getToken } = useAuth();
 
   useEffect(() => {
-    setSavedMonths(getAllMonths());
+    getAllMonths(getToken).then(setSavedMonths);
   }, []);
 
   const formatMonth = (key) => {
@@ -19,10 +24,10 @@ function HomeScreen() {
     return d.toLocaleString('default', { month: 'long', year: 'numeric' });
   };
 
-  const handleDelete = (key, e) => {
+  const handleDelete = async (key, e) => {
     e.stopPropagation();
-    deleteMonthData(key);
-    setSavedMonths(getAllMonths());
+    await deleteMonthData(key, getToken);
+    getAllMonths(getToken).then(setSavedMonths);
   };
 
   const monthKeys = Object.keys(savedMonths).sort().reverse();
@@ -105,6 +110,7 @@ function HomeScreen() {
 function UploadScreen() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const { getToken } = useAuth();
 
   const handleProcess = async ({ month, uploads, plaidAccounts, savingsAccounts }) => {
     setLoading(true);
@@ -118,7 +124,6 @@ function UploadScreen() {
     const savingsNames = (savingsAccounts || []).map(a => a.name);
     formData.append('savings_account_names', JSON.stringify(savingsNames));
     const plaidPayload = (plaidAccounts || []).map(a => ({
-      access_token: a.plaidAccessToken,
       account_id: a.plaidAccountId,
       account_name: a.name,
       account_type: a.type,
@@ -126,9 +131,14 @@ function UploadScreen() {
     formData.append('plaid_accounts', JSON.stringify(plaidPayload));
 
     try {
-      const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData });
+      const token = await getToken();
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${API_URL}/upload`, {
+        method: 'POST',
+        body: formData,
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
-      // store in sessionStorage to pass to review screen
       sessionStorage.setItem('pendingMonthData', JSON.stringify({ ...data, month }));
       navigate('/review');
     } catch (err) {
@@ -145,6 +155,7 @@ function UploadScreen() {
 function ReviewScreen() {
   const navigate = useNavigate();
   const [monthData, setMonthData] = useState(null);
+  const { getToken } = useAuth();
 
   useEffect(() => {
     const raw = sessionStorage.getItem('pendingMonthData');
@@ -152,15 +163,15 @@ function ReviewScreen() {
     setMonthData(JSON.parse(raw));
   }, []);
 
-  const handleDone = (cleanTransactions, newOffsets) => {
+  const handleDone = async (cleanTransactions, newOffsets) => {
     const month = monthData.month;
     const combined = [...(monthData.offsets || []), ...(newOffsets || [])];
 
-    saveMonthData(month, {
+    await saveMonthData(month, {
       transactions: cleanTransactions,
       offsets: combined,
       month,
-    });
+    }, getToken);
 
     sessionStorage.removeItem('pendingMonthData');
     navigate(`/month/${month}`);
@@ -175,11 +186,13 @@ function DashboardScreen() {
   const { month } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const { getToken } = useAuth();
 
   useEffect(() => {
-    const saved = getMonthData(month);
-    if (!saved) { navigate('/'); return; }
-    setData(saved);
+    getMonthData(month, getToken).then(saved => {
+      if (!saved) { navigate('/'); return; }
+      setData(saved);
+    });
   }, [month]);
 
   if (!data) return null;
@@ -195,16 +208,38 @@ function DashboardScreen() {
   );
 }
 
+// ── SSO Callback ───────────────────────────────────────────
+function SSOCallback() {
+  const { handleRedirectCallback } = useAuth();
+  const navigate = useNavigate();
+  useEffect(() => {
+    handleRedirectCallback().then(() => navigate('/'));
+  }, []);
+  return null;
+}
+
 // ── App Shell ──────────────────────────────────────────────
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomeScreen />} />
-        <Route path="/upload" element={<UploadScreen />} />
-        <Route path="/review" element={<ReviewScreen />} />
-        <Route path="/month/:month" element={<DashboardScreen />} />
-      </Routes>
-    </BrowserRouter>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/sso-callback" element={<SSOCallback />} />
+          <Route path="*" element={
+            <>
+              <SignedOut><LoginScreen /></SignedOut>
+              <SignedIn>
+                <Routes>
+                  <Route path="/" element={<HomeScreen />} />
+                  <Route path="/upload" element={<UploadScreen />} />
+                  <Route path="/review" element={<ReviewScreen />} />
+                  <Route path="/month/:month" element={<DashboardScreen />} />
+                </Routes>
+              </SignedIn>
+            </>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </ClerkProvider>
   );
 }

@@ -1,6 +1,7 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import List, Optional, Any
 from dotenv import load_dotenv
 from pdf_parser import parse_statement, parse_venmo_csv, parse_generic_csv
 from categorizer import categorize_transactions
@@ -24,8 +25,56 @@ import os
 import json
 import uvicorn
 import hashlib
+import time
+import httpx
+from jose import jwt, JWTError
+import database as db
 
 load_dotenv()
+
+# ── Clerk JWT auth ─────────────────────────────────────────────────────────
+_jwks_cache: dict = {"keys": None, "fetched_at": 0.0}
+_JWKS_TTL = 3600.0
+_bearer = HTTPBearer()
+
+
+async def _get_jwks() -> dict:
+    now = time.time()
+    if _jwks_cache["keys"] and now - _jwks_cache["fetched_at"] < _JWKS_TTL:
+        return _jwks_cache["keys"]
+    issuer = os.getenv("CLERK_ISSUER", "")
+    async with httpx.AsyncClient() as c:
+        r = await c.get(f"{issuer}/.well-known/jwks.json", timeout=5.0)
+        r.raise_for_status()
+        _jwks_cache["keys"] = r.json()
+        _jwks_cache["fetched_at"] = now
+        return _jwks_cache["keys"]
+
+
+async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> str:
+    try:
+        jwks = await _get_jwks()
+        payload = jwt.decode(
+            creds.credentials, jwks, algorithms=["RS256"],
+            options={"verify_aud": False},
+        )
+        user_id: str = payload.get("sub", "")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user_id
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# ── Pydantic models ────────────────────────────────────────────────────────
+class DataBody(BaseModel):
+    data: Any
+
+
+class MonthBody(BaseModel):
+    month_key: str
+    data: dict
+
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -128,6 +177,7 @@ app.add_middleware(
 
 class LinkTokenRequest(BaseModel):
     access_token: Optional[str] = None
+    account_id: Optional[str] = None
 
 class ExchangeTokenRequest(BaseModel):
     public_token: str
@@ -138,17 +188,58 @@ def root():
     return {"status": "myfinance backend running"}
 
 
+# ── Data CRUD — months ─────────────────────────────────────────────────────
+@app.get("/data/months")
+async def get_months(user_id: str = Depends(get_current_user)):
+    return {"data": db.get_all_months(user_id)}
+
+
+@app.post("/data/months")
+async def set_month(body: MonthBody, user_id: str = Depends(get_current_user)):
+    db.set_month_data(user_id, body.month_key, body.data)
+    return {"ok": True}
+
+
+@app.delete("/data/months/{month_key}")
+async def delete_month(month_key: str, user_id: str = Depends(get_current_user)):
+    db.delete_month_data(user_id, month_key)
+    return {"ok": True}
+
+
+# ── Data CRUD — accounts / income / savings_accounts ──────────────────────
+@app.get("/data/{table}")
+async def get_data(table: str, user_id: str = Depends(get_current_user)):
+    if table not in db.ALLOWED_TABLES:
+        raise HTTPException(status_code=400, detail="Invalid table")
+    return {"data": db.get_user_data(user_id, table)}
+
+
+@app.post("/data/{table}")
+async def set_data(table: str, body: DataBody, user_id: str = Depends(get_current_user)):
+    if table not in db.ALLOWED_TABLES:
+        raise HTTPException(status_code=400, detail="Invalid table")
+    db.set_user_data(user_id, table, body.data)
+    return {"ok": True}
+
+
 @app.post("/plaid/link-token")
-async def create_link_token(body: LinkTokenRequest = None):
+async def create_link_token(
+    body: LinkTokenRequest = None,
+    user_id: str = Depends(get_current_user),
+):
     try:
         kwargs = dict(
             client_name="myfinance",
             country_codes=[CountryCode("US")],
             language="en",
-            user=LinkTokenCreateRequestUser(client_user_id="myfinance-user"),
+            user=LinkTokenCreateRequestUser(client_user_id=user_id),
         )
         if body and body.access_token:
             kwargs["access_token"] = body.access_token
+        elif body and body.account_id:
+            token = db.get_plaid_token(user_id, body.account_id)
+            if token:
+                kwargs["access_token"] = token
         else:
             kwargs["products"] = [Products("transactions")]
         request = LinkTokenCreateRequest(**kwargs)
@@ -159,7 +250,10 @@ async def create_link_token(body: LinkTokenRequest = None):
 
 
 @app.post("/plaid/exchange-token")
-async def exchange_token(body: ExchangeTokenRequest):
+async def exchange_token(
+    body: ExchangeTokenRequest,
+    user_id: str = Depends(get_current_user),
+):
     try:
         exchange_response = plaid_client.item_public_token_exchange(
             ItemPublicTokenExchangeRequest(public_token=body.public_token)
@@ -179,7 +273,11 @@ async def exchange_token(body: ExchangeTokenRequest):
             }
             for a in accounts_response["accounts"]
         ]
-        return {"access_token": access_token, "accounts": accounts}
+
+        for account in accounts:
+            db.set_plaid_token(user_id, account["account_id"], access_token)
+
+        return {"accounts": accounts}
     except Exception as e:
         return {"error": str(e)}, 502
 
@@ -192,6 +290,7 @@ async def upload_files(
     month: str = Form(...),
     savings_account_names: str = Form(default='[]'),
     plaid_accounts: str = Form(default='[]'),
+    user_id: str = Depends(get_current_user),
 ):
     savings_names = json.loads(savings_account_names)
     plaid_account_list = json.loads(plaid_accounts)
@@ -234,7 +333,8 @@ async def upload_files(
     if plaid_account_list:
         plaid_tasks = [
             loop.run_in_executor(executor, fetch_plaid_transactions,
-                pa['access_token'], pa['account_id'], pa['account_name'], pa['account_type'], month)
+                db.get_plaid_token(user_id, pa['account_id']),
+                pa['account_id'], pa['account_name'], pa['account_type'], month)
             for pa in plaid_account_list
         ]
         plaid_results = await asyncio.gather(*plaid_tasks)
@@ -267,7 +367,7 @@ async def upload_files(
     rent_transactions = [t for t in clean if 'rent' in t.get('description', '').lower() or t.get('category') == 'Rent']
     print(f"RENT DEBUG: {rent_transactions}")
 
-    return {
+    result = {
         'transactions': clean,
         'needs_review': needs_review,
         'auto_approved': auto_approved,
@@ -277,6 +377,14 @@ async def upload_files(
         'count': len(clean),
         'month': month,
     }
+
+    db.set_month_data(user_id, month, {
+        'transactions': clean,
+        'offsets': offsets,
+        'month': month,
+    })
+
+    return result
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

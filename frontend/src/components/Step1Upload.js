@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { usePlaidLink } from 'react-plaid-link';
 import { ACCOUNT_TYPES } from '../config';
 import { getAccounts, saveAccount, deleteAccount, updateAccount, getSavingsAccounts } from '../utils/storage';
+import { authFetch, API_URL } from '../utils/auth';
 
 const MONTHS = [];
 const now = new Date();
@@ -16,7 +18,7 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
   const [dragging, setDragging] = useState(false);
   const inputId = `file-${account.id}`;
   const dataSource = account.dataSource || 'manual';
-  const isPlaidConnected = dataSource === 'plaid' && account.plaidAccessToken;
+  const isPlaidConnected = dataSource === 'plaid' && account.plaidAccountId;
   const isPlaidError = dataSource === 'plaid-error';
   const isPlaidMode = dataSource === 'plaid' || isPlaidError;
 
@@ -170,6 +172,7 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
 }
 
 export default function Step1Upload({ onProcess, loading }) {
+  const { getToken } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [uploads, setUploads] = useState({});
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0].value);
@@ -180,39 +183,37 @@ export default function Step1Upload({ onProcess, loading }) {
   const [connectingAccountId, setConnectingAccountId] = useState(null);
   const [isReconnectMode, setIsReconnectMode] = useState(false);
   const [plaidPickerAccounts, setPlaidPickerAccounts] = useState([]);
-  const [pendingAccessToken, setPendingAccessToken] = useState(null);
 
   useEffect(() => {
-    setAccounts(getAccounts());
+    getAccounts(getToken).then(setAccounts);
   }, []);
 
   const onPlaidSuccess = useCallback(async (publicToken) => {
     if (isReconnectMode) {
-      setAccounts(updateAccount(connectingAccountId, { dataSource: 'plaid' }));
+      const updated = await updateAccount(connectingAccountId, { dataSource: 'plaid' }, getToken);
+      setAccounts(updated);
       setLinkToken(null);
       setConnectingAccountId(null);
       setIsReconnectMode(false);
       return;
     }
     try {
-      const res = await fetch('http://localhost:8000/plaid/exchange-token', {
+      const res = await authFetch(`${API_URL}/plaid/exchange-token`, getToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ public_token: publicToken }),
       });
-      const { access_token, accounts: plaidAccounts } = await res.json();
+      const { accounts: plaidAccounts } = await res.json();
       if (plaidAccounts.length === 1) {
-        const updated = updateAccount(connectingAccountId, {
+        const updated = await updateAccount(connectingAccountId, {
           dataSource: 'plaid',
-          plaidAccessToken: access_token,
           plaidAccountId: plaidAccounts[0].account_id,
           plaidAccountName: plaidAccounts[0].name,
-        });
+        }, getToken);
         setAccounts(updated);
         setConnectingAccountId(null);
         setLinkToken(null);
       } else {
-        setPendingAccessToken(access_token);
         setPlaidPickerAccounts(plaidAccounts);
       }
     } catch (e) {
@@ -220,7 +221,7 @@ export default function Step1Upload({ onProcess, loading }) {
       setConnectingAccountId(null);
       setLinkToken(null);
     }
-  }, [isReconnectMode, connectingAccountId]);
+  }, [isReconnectMode, connectingAccountId, getToken]);
 
   const onPlaidExit = useCallback(() => {
     setLinkToken(null);
@@ -245,7 +246,7 @@ export default function Step1Upload({ onProcess, loading }) {
     try {
       setConnectingAccountId(accountId);
       setIsReconnectMode(false);
-      const res = await fetch('http://localhost:8000/plaid/link-token', { method: 'POST' });
+      const res = await authFetch(`${API_URL}/plaid/link-token`, getToken, { method: 'POST' });
       const { link_token } = await res.json();
       setLinkToken(link_token);
     } catch (e) {
@@ -259,10 +260,10 @@ export default function Step1Upload({ onProcess, loading }) {
       const account = accounts.find(a => a.id === accountId);
       setConnectingAccountId(accountId);
       setIsReconnectMode(true);
-      const res = await fetch('http://localhost:8000/plaid/link-token', {
+      const res = await authFetch(`${API_URL}/plaid/link-token`, getToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: account.plaidAccessToken }),
+        body: JSON.stringify({ account_id: account.plaidAccountId }),
       });
       const { link_token } = await res.json();
       setLinkToken(link_token);
@@ -273,47 +274,45 @@ export default function Step1Upload({ onProcess, loading }) {
     }
   };
 
-  const handleSelectPlaidAccount = (plaidAccount) => {
-    const updated = updateAccount(connectingAccountId, {
+  const handleSelectPlaidAccount = async (plaidAccount) => {
+    const updated = await updateAccount(connectingAccountId, {
       dataSource: 'plaid',
-      plaidAccessToken: pendingAccessToken,
       plaidAccountId: plaidAccount.account_id,
       plaidAccountName: plaidAccount.name,
-    });
+    }, getToken);
     setAccounts(updated);
     setPlaidPickerAccounts([]);
-    setPendingAccessToken(null);
     setConnectingAccountId(null);
     setLinkToken(null);
   };
 
-  const handleAddAccount = () => {
+  const handleAddAccount = async () => {
     if (!newAccount.name.trim()) return;
     const account = {
       id: Date.now().toString(),
       name: newAccount.name.trim(),
       type: newAccount.type,
     };
-    const updated = saveAccount(account);
+    const updated = await saveAccount(account, getToken);
     setAccounts(updated);
     setNewAccount({ name: '', type: 'Credit Card' });
     setShowAddAccount(false);
   };
 
-  const handleDeleteAccount = (id) => {
-    const updated = deleteAccount(id);
+  const handleDeleteAccount = async (id) => {
+    const updated = await deleteAccount(id, getToken);
     setAccounts(updated);
     const newUploads = { ...uploads };
     delete newUploads[id];
     setUploads(newUploads);
   };
 
-  const handleSwitchToPlaid = (id) => {
-    setAccounts(updateAccount(id, { dataSource: 'plaid' }));
+  const handleSwitchToPlaid = async (id) => {
+    setAccounts(await updateAccount(id, { dataSource: 'plaid' }, getToken));
   };
 
-  const handleSwitchToManual = (id) => {
-    setAccounts(updateAccount(id, { dataSource: 'manual' }));
+  const handleSwitchToManual = async (id) => {
+    setAccounts(await updateAccount(id, { dataSource: 'manual' }, getToken));
   };
 
   const handleFileDrop = (accountId, file) => {
@@ -330,18 +329,18 @@ export default function Step1Upload({ onProcess, loading }) {
     }));
   };
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
     const uploadedAccounts = accounts
       .filter(a => uploads[a.id]?.length > 0 && a.dataSource !== 'plaid')
       .flatMap(a => uploads[a.id].map(file => ({ account: a, file })));
-    const plaidAccounts = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccessToken);
+    const plaidAccounts = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccountId);
     if (!uploadedAccounts.length && !plaidAccounts.length) return;
-    const savingsAccounts = getSavingsAccounts();
+    const savingsAccounts = await getSavingsAccounts(getToken);
     onProcess({ month: selectedMonth, uploads: uploadedAccounts, plaidAccounts, savingsAccounts });
   };
 
   const uploadCount = accounts.filter(a => uploads[a.id]?.length > 0 && a.dataSource !== 'plaid').length;
-  const plaidConnectedCount = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccessToken).length;
+  const plaidConnectedCount = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccountId).length;
   const readyCount = uploadCount + plaidConnectedCount;
   const totalFiles = accounts
     .filter(a => a.dataSource !== 'plaid')
@@ -516,7 +515,7 @@ export default function Step1Upload({ onProcess, loading }) {
               ))}
             </div>
             <button
-              onClick={() => { setPlaidPickerAccounts([]); setPendingAccessToken(null); setConnectingAccountId(null); setLinkToken(null); }}
+              onClick={() => { setPlaidPickerAccounts([]); setConnectingAccountId(null); setLinkToken(null); }}
               style={{ width: '100%', marginTop: 16, background: 'transparent', border: '0.5px solid #2a2a2a', color: '#888', padding: '10px', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
             >
               Cancel

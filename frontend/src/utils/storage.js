@@ -34,8 +34,8 @@ export const deleteAccount = async (accountId, getToken) => {
   return updated;
 };
 
-export const updateAccount = async (id, fields, getToken) => {
-  const accounts = await getAccounts(getToken);
+export const updateAccount = async (id, fields, getToken, currentAccounts = null) => {
+  const accounts = currentAccounts ?? await getAccounts(getToken);
   const updated = accounts.map(a => a.id === id ? { ...a, ...fields } : a);
   await saveAccounts(updated, getToken);
   return updated;

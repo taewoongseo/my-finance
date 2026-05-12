@@ -229,7 +229,7 @@ export default function Step1Upload({ onProcess, loading }) {
 
   const onPlaidSuccess = useCallback(async (publicToken) => {
     if (isReconnectMode) {
-      const updated = await updateAccount(connectingAccountId, { dataSource: 'plaid' }, getToken);
+      const updated = await updateAccount(connectingAccountId, { dataSource: 'plaid' }, getToken, accounts);
       setAccounts(updated);
       setLinkToken(null);
       setConnectingAccountId(null);
@@ -321,7 +321,7 @@ export default function Step1Upload({ onProcess, loading }) {
       dataSource: 'plaid',
       plaidAccountId: plaidAccount.account_id,
       plaidAccountName: plaidAccount.name,
-    }, getToken);
+    }, getToken, accounts);
     setAccounts(updated);
     setPlaidPickerAccounts([]);
     setConnectingAccountId(null);
@@ -351,11 +351,11 @@ export default function Step1Upload({ onProcess, loading }) {
   };
 
   const handleSwitchToPlaid = async (id) => {
-    setAccounts(await updateAccount(id, { dataSource: 'plaid' }, getToken));
+    setAccounts(await updateAccount(id, { dataSource: 'plaid' }, getToken, accounts));
   };
 
   const handleSwitchToManual = async (id) => {
-    setAccounts(await updateAccount(id, { dataSource: 'manual' }, getToken));
+    setAccounts(await updateAccount(id, { dataSource: 'manual' }, getToken, accounts));
   };
 
   const handleFileDrop = (accountId, file) => {

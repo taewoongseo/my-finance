@@ -114,6 +114,18 @@ KNOWN_SAVINGS_KEYWORDS = ['robinhood', 'fidelity', 'americanexpress', ...]
 
 ---
 
+## Debugging Rules — ALWAYS follow before writing any fix
+
+Before touching any file for a categorization or balancer bug:
+1. **Trace the exact transaction type through the full pipeline** — state which step is broken before writing code:
+   ```
+   upload → parse → categorizer? → balancer rule N? → FlagCard/FlipCard/offset/excluded?
+   ```
+2. **Venmo received credits never reach categorizer.py** — they are fully handled by balancer Rule 4 (`classify_venmo_notes_batch`). Fixes for Venmo received categorization belong in `balancer.py`, not `categorizer.py`.
+3. If the broken transaction is Venmo, Zelle, or a CC payment, check the balancer first.
+
+---
+
 ## Architecture Rules — NEVER violate these
 
 1. **Category labels** must match `config.js` CATEGORY_HIERARCHY exactly — both frontend and backend

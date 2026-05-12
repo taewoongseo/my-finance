@@ -10,6 +10,12 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CONFIDENCE_THRESHOLD = 70
 CHUNK_SIZE = 50
 
+# Patterns applied before LLM — description substring → (category, confidence)
+PRE_CATEGORIZE_PATTERNS = [
+    ('🎁', 'Gift', 95),
+    ('선물', 'Gift', 95),
+]
+
 CATEGORIES = [
     "Rent", "Home Insurance",
     "Groceries", "Dine out", "Drinks/snacks",
@@ -42,10 +48,11 @@ EXACT MERCHANT MATCHES → confidence 95:
 - Mint Mobile, Mint → Phone
 - AT&T, T-Mobile → Phone
 - Gusto, Gusto Pay, ADP, direct deposit → Income
-- Bilt Rent, BPS Bilt, rent charge, rent adjustment → Rent
+- Bilt Rent, BPS Bilt, rent charge, rent adjustment, Bilt Housing, bilt housing → Rent
 - IN2 ONNURI, church, tithe → Offering
 - Foreign transaction fee, bank fee, service fee → Bank fees
 - Venmo Payment, Standard Transfer, ACH transfer, payment thank you → Transfer
+- A transaction whose description is exactly or nearly "Payment" (e.g. "Payment", "Online Payment") with no merchant context → Transfer at 90% (this is a credit card payment received by the card, not income)
 
 PATTERN MATCHES → confidence 85-90:
 - TST* prefix → Dine out (TST is Toast POS, used by restaurants)
@@ -58,6 +65,8 @@ PATTERN MATCHES → confidence 85-90:
 - "pharmacy", "drugstore", "CVS", "Walgreens", "Duane Reade" → Wellness
 - Whole Foods, Trader Joe's, H Mart, Costco, grocery, supermarket → Groceries
 - Flowers, florist, FTD, 1-800-Flowers → Gift
+- 🎁 gift emoji anywhere in description → Gift at 95
+- 선물 (Korean for "gift") anywhere in description, with or without a name prefix (e.g. 상우선물, 친구선물) → Gift at 95
 - Airbnb → Flights/Travel (accommodation)
 - Hotel chains (Marriott, Hilton, Hyatt, etc.) → Flights/Travel
 
@@ -113,64 +122,79 @@ Return ONLY a JSON array of the same length. Each item must have exactly three f
 No explanation, no markdown."""
 
 def categorize_chunk(chunk: list[dict]) -> list[dict]:
+    pre_results = {}
+    llm_indices = []
+
+    for i, t in enumerate(chunk):
+        desc = t.get('description', '')
+        matched = False
+        for pattern, category, confidence in PRE_CATEGORIZE_PATTERNS:
+            if pattern in desc:
+                pre_results[i] = (category, confidence)
+                print(f"  pre-categorized: {desc[:30]} → {category} ({confidence}%)")
+                matched = True
+                break
+        if not matched:
+            llm_indices.append(i)
+
     slim = [
         {
             'i': i,
-            'description': t.get('description', ''),
-            'amount': t.get('amount', 0),
-            'type': t.get('type', 'debit'),
+            'description': chunk[i].get('description', ''),
+            'amount': chunk[i].get('amount', 0),
+            'type': chunk[i].get('type', 'debit'),
         }
-        for i, t in enumerate(chunk)
+        for i in llm_indices
     ]
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(slim)}
-            ],
-            temperature=0,
-        )
+    llm_result_map = {}
+    if slim:
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(slim)}
+                ],
+                temperature=0,
+            )
 
-        raw = response.choices[0].message.content.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        llm_results = json.loads(raw)
+            raw = response.choices[0].message.content.strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            llm_results = json.loads(raw)
 
-        # build lookup by 'i' field
-        result_map = {}
-        for r in llm_results:
-            idx = r.get('i')
-            if idx is not None:
-                result_map[idx] = r
+            for r in llm_results:
+                idx = r.get('i')
+                if idx is not None:
+                    llm_result_map[idx] = r
 
-        print(f"  result_map keys: {sorted(result_map.keys())[:5]}...")
+            print(f"  llm result_map keys: {sorted(llm_result_map.keys())[:5]}...")
 
-        categorized = []
-        for i, original in enumerate(chunk):
-            llm = result_map.get(i, {})
+        except json.JSONDecodeError as e:
+            print(f"Categorization JSON error: {e}")
+        except Exception as e:
+            print(f"Categorization error: {e}")
+
+    categorized = []
+    for i, original in enumerate(chunk):
+        if i in pre_results:
+            category, confidence = pre_results[i]
+        else:
+            llm = llm_result_map.get(i, {})
             category = llm.get('category', 'Misc. Spending')
             confidence = llm.get('confidence', 30)
-            print(f"  {original.get('description', '')[:30]} → {category} ({confidence}%)")
-
             if category not in CATEGORIES:
                 category = 'Misc. Spending'
                 confidence = 30
-            categorized.append({
-                **original,
-                'category': category,
-                'confidence': confidence,
-                'needs_review': confidence < CONFIDENCE_THRESHOLD,
-            })
+        print(f"  {original.get('description', '')[:30]} → {category} ({confidence}%)")
+        categorized.append({
+            **original,
+            'category': category,
+            'confidence': confidence,
+            'needs_review': confidence < CONFIDENCE_THRESHOLD,
+        })
 
-        return categorized
-
-    except json.JSONDecodeError as e:
-        print(f"Categorization JSON error: {e}")
-        return [{**t, 'category': 'Misc. Spending', 'confidence': 30, 'needs_review': True} for t in chunk]
-    except Exception as e:
-        print(f"Categorization error: {e}")
-        return [{**t, 'category': 'Misc. Spending', 'confidence': 30, 'needs_review': True} for t in chunk]
+    return categorized
 
 
 def categorize_transactions(transactions: list[dict]) -> list[dict]:

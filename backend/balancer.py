@@ -209,6 +209,21 @@ def balance_transactions(transactions: list[dict], savings_account_names: list[s
             print(f"  1b caught: {t['description']} ${t['amount']} id={t['_id']}")
             
 
+    # ── RULE 1c: Unpaired CC payment credits ─────────────────
+    # Credits with CC_PAYMENT_KEYWORDS that had no matching debit are still auto-excluded.
+    # "Payment Thank You - Web", "Payment Thank You-Mobile", etc. are always CC payments.
+    for credit in credits:
+        if credit['_id'] in excluded_ids:
+            continue
+        desc_lower = credit['description'].lower()
+        if any(k in desc_lower for k in CC_PAYMENT_KEYWORDS):
+            excluded_ids.add(credit['_id'])
+            excluded.append({
+                'reason': 'CC payment (unpaired)',
+                'transactions': [credit]
+            })
+            print(f"  1c caught: {credit['description']} ${credit['amount']} id={credit['_id']}")
+
     # ── RULE 2: Venmo funding from checking ──────────────────
     for t in checking_transactions:
         if t['_id'] in excluded_ids:

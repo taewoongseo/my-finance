@@ -608,20 +608,26 @@ function SavingsSection({ month, onTotalChange }) {
 function IncomeSection({ month, autoIncome, onTotalChange }) {
     const { getToken } = useAuth();
     const [income, setIncome] = useState({ directDeposit: 0, other: [] });
+    const [incomeLoaded, setIncomeLoaded] = useState(false);
     const [showAdd, setShowAdd] = useState(false);
     const [newLabel, setNewLabel] = useState('');
 
     useEffect(() => {
-      getMonthIncome(month, getToken).then(setIncome);
+      setIncomeLoaded(false);
+      getMonthIncome(month, getToken).then(data => {
+        setIncome(data);
+        setIncomeLoaded(true);
+      });
     }, [month]);
 
     useEffect(() => {
+      if (!incomeLoaded) return;
       if (autoIncome > 0 && income.directDeposit === 0) {
         const updated = { ...income, directDeposit: autoIncome };
         setIncome(updated);
         saveMonthIncome(month, updated, getToken);
       }
-    }, [autoIncome]);
+    }, [autoIncome, incomeLoaded]);
 
     const handleDirectDepositChange = (val) => {
       const updated = { ...income, directDeposit: parseFloat(val) || 0 };

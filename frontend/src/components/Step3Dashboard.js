@@ -605,7 +605,7 @@ function SavingsSection({ month, onTotalChange }) {
   );
 }
 
-function IncomeSection({ month, autoIncome, onTotalChange }) {
+function IncomeSection({ month, autoIncome, autoOtherIncome = [], onTotalChange }) {
     const { getToken } = useAuth();
     const [income, setIncome] = useState({ directDeposit: 0, other: [] });
     const [incomeLoaded, setIncomeLoaded] = useState(false);
@@ -622,12 +622,21 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
 
     useEffect(() => {
       if (!incomeLoaded) return;
+      let updated = { ...income };
+      let changed = false;
       if (autoIncome > 0 && income.directDeposit === 0) {
-        const updated = { ...income, directDeposit: autoIncome };
+        updated.directDeposit = autoIncome;
+        changed = true;
+      }
+      if (autoOtherIncome.length > 0 && income.other.length === 0) {
+        updated.other = autoOtherIncome;
+        changed = true;
+      }
+      if (changed) {
         setIncome(updated);
         saveMonthIncome(month, updated, getToken);
       }
-    }, [autoIncome, incomeLoaded]);
+    }, [autoIncome, autoOtherIncome, incomeLoaded]);
 
     const handleDirectDepositChange = (val) => {
       const updated = { ...income, directDeposit: parseFloat(val) || 0 };
@@ -819,9 +828,14 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const cashFlow = totalIncome - totalExpenses - totalSaved;
     const savingsRate = totalIncome > 0 ? ((totalSaved / totalIncome) * 100).toFixed(1) : '—';
   
-    const autoIncome = transactions
-      .filter(t => t.type === 'credit' && t.category === 'Income')
+    const PAYROLL_KEYWORDS = ['gusto', 'adp', 'paychex', 'direct deposit', 'payroll', 'intuit payroll'];
+    const incomeCredits = transactions.filter(t => t.type === 'credit' && t.category === 'Income');
+    const autoIncome = incomeCredits
+      .filter(t => PAYROLL_KEYWORDS.some(k => t.description?.toLowerCase().includes(k)))
       .reduce((sum, t) => sum + t.amount, 0);
+    const autoOtherIncome = incomeCredits
+      .filter(t => !PAYROLL_KEYWORDS.some(k => t.description?.toLowerCase().includes(k)))
+      .map(t => ({ id: t._id || t.id, label: t.description, amount: t.amount }));
   
     const monthLabel = new Date(month + '-15').toLocaleString('default', { month: 'long', year: 'numeric' });
   
@@ -889,6 +903,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
           <IncomeSection
             month={month}
             autoIncome={autoIncome}
+            autoOtherIncome={autoOtherIncome}
             onTotalChange={setTotalIncome}
           />
   

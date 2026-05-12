@@ -20,8 +20,12 @@ VENMO_DRINKS_KEYWORDS = [
 ]
 
 VENMO_GROCERY_KEYWORDS = [
-    'hmart', 'h mart', 'grocery', 'groceries', 'trader joe', 
+    'hmart', 'h mart', 'grocery', 'groceries', 'trader joe',
     'whole foods', 'costco', 'supermarket',
+]
+
+VENMO_GIFT_KEYWORDS = [
+    'gift', 'present', '선물', '생일', 'birthday', '🎁', '🎀',
 ]
 
 CC_PAYMENT_KEYWORDS = [
@@ -108,6 +112,8 @@ def classify_venmo_notes_batch(notes: list[str]) -> list[str]:
             results.append('drinks')
         elif any(k in note_lower for k in VENMO_GROCERY_KEYWORDS):
             results.append('groceries')
+        elif any(k in note for k in VENMO_GIFT_KEYWORDS):
+            results.append('gift')
         else:
             results.append(None)
             needs_llm.append(note)
@@ -124,12 +130,14 @@ def classify_venmo_notes_batch(notes: list[str]) -> list[str]:
                         "role": "system",
                         "content": """Classify each Venmo note. Someone paid the user — what was it for?
 Return ONLY a JSON array of strings, same length as input.
-Each string must be exactly 'food', 'drinks', or 'unclear'.
+Each string must be exactly one of: 'food', 'drinks', 'groceries', 'gift', 'unclear'.
 - 'food': splitting a meal, restaurant, dining
 - 'drinks': coffee, boba, bubble tea, bar drinks, snacks, cafe
-- 'unclear': anything else — gifts, unclear, non-food related
+- 'groceries': grocery store, supermarket run
+- 'gift': birthday (생일), gift (선물), present, 🎁, any gift-giving occasion
+- 'unclear': anything else
 Translate non-English text first, then classify.
-Example: ["food", "drinks", "unclear"]"""
+Example: ["food", "gift", "unclear"]"""
                     },
                     {"role": "user", "content": notes_list}
                 ],
@@ -142,7 +150,7 @@ Example: ["food", "drinks", "unclear"]"""
 
             for i, idx in enumerate(needs_llm_idx):
                 r = llm_results[i] if i < len(llm_results) else 'unclear'
-                results[idx] = r if r in ['food', 'drinks', 'unclear'] else 'unclear'
+                results[idx] = r if r in ['food', 'drinks', 'groceries', 'gift', 'unclear'] else 'unclear'
         except Exception as e:
             print(f"Venmo classification error: {e}")
             for idx in needs_llm_idx:
@@ -291,6 +299,12 @@ def balance_transactions(transactions: list[dict], savings_account_names: list[s
                 offsets.append({
                     **t,
                     'offset_category': 'Groceries',
+                    'amount': -t['amount'],
+                })
+            elif classification == 'gift':
+                offsets.append({
+                    **t,
+                    'offset_category': 'Gift',
                     'amount': -t['amount'],
                 })
             else:

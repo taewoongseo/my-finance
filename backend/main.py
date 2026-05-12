@@ -225,6 +225,11 @@ async def set_data(table: str, body: DataBody, user_id: str = Depends(get_curren
     return {"ok": True}
 
 
+@app.get("/plaid/accounts")
+async def get_plaid_accounts(user_id: str = Depends(get_current_user)):
+    return {"accounts": db.get_all_plaid_accounts(user_id)}
+
+
 @app.post("/plaid/link-token")
 async def create_link_token(
     body: LinkTokenRequest = None,
@@ -281,7 +286,7 @@ async def exchange_token(
         ]
 
         for account in accounts:
-            db.set_plaid_token(user_id, account["account_id"], access_token)
+            db.set_plaid_token(user_id, account["account_id"], access_token, account["name"], account["type"])
 
         return {"accounts": accounts}
     except Exception as e:

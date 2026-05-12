@@ -80,11 +80,24 @@ def get_plaid_token(user_id: str, account_id: str) -> str | None:
             return row["access_token"] if row else None
 
 
-def set_plaid_token(user_id: str, account_id: str, access_token: str) -> None:
+def get_all_plaid_accounts(user_id: str) -> list:
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO plaid_connections (user_id, account_id, access_token) VALUES (%s, %s, %s) "
-                "ON CONFLICT (user_id, account_id) DO UPDATE SET access_token = EXCLUDED.access_token",
-                (user_id, account_id, access_token),
+                "SELECT account_id, account_name, account_type FROM plaid_connections WHERE user_id = %s",
+                (user_id,),
+            )
+            return [
+                {"account_id": row["account_id"], "name": row["account_name"], "type": row["account_type"]}
+                for row in cur.fetchall()
+            ]
+
+
+def set_plaid_token(user_id: str, account_id: str, access_token: str, account_name: str = None, account_type: str = None) -> None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO plaid_connections (user_id, account_id, access_token, account_name, account_type) VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (user_id, account_id) DO UPDATE SET access_token = EXCLUDED.access_token, account_name = EXCLUDED.account_name, account_type = EXCLUDED.account_type",
+                (user_id, account_id, access_token, account_name, account_type),
             )

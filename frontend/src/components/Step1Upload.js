@@ -14,7 +14,7 @@ for (let i = 0; i < 24; i++) {
   MONTHS.push({ value, label });
 }
 
-function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onConnect, onReconnect, onSwitchToPlaid, onSwitchToManual }) {
+function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onConnect, onReconnect, onSwitchToPlaid, onSwitchToManual, unmappedAccounts, onReuseAccount }) {
   const [dragging, setDragging] = useState(false);
   const inputId = `file-${account.id}`;
   const dataSource = account.dataSource || 'manual';
@@ -69,16 +69,30 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
         )}
 
         {isPlaidMode && !isPlaidConnected && !isPlaidError && (
-          <button
-            onClick={() => onConnect(account.id)}
-            style={{
-              padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-              border: '0.5px solid #3a4a2a', background: 'transparent', color: '#8ab84a',
-              fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0,
-            }}
-          >
-            Connect →
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
+            <button
+              onClick={() => onConnect(account.id)}
+              style={{
+                padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                border: '0.5px solid #3a4a2a', background: 'transparent', color: '#8ab84a',
+                fontFamily: 'inherit', whiteSpace: 'nowrap',
+              }}
+            >
+              Connect a new bank →
+            </button>
+            {unmappedAccounts?.length > 0 && (
+              <button
+                onClick={onReuseAccount}
+                style={{
+                  padding: '6px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                  border: '0.5px solid #2a3a2a', background: 'transparent', color: '#556644',
+                  fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}
+              >
+                Reuse a connected bank →
+              </button>
+            )}
+          </div>
         )}
 
         {isPlaidConnected && (
@@ -184,9 +198,16 @@ export default function Step1Upload({ onProcess, loading }) {
   const [isReconnectMode, setIsReconnectMode] = useState(false);
   const [plaidPickerAccounts, setPlaidPickerAccounts] = useState([]);
   const [receivedRedirectUri, setReceivedRedirectUri] = useState(null);
+  const [storedPlaidAccounts, setStoredPlaidAccounts] = useState([]);
 
   useEffect(() => {
-    getAccounts(getToken).then(setAccounts);
+    Promise.all([
+      getAccounts(getToken),
+      authFetch(`${API_URL}/plaid/accounts`, getToken).then(r => r.json()).then(d => d.accounts || []),
+    ]).then(([accts, plaidAccts]) => {
+      setAccounts(accts);
+      setStoredPlaidAccounts(plaidAccts);
+    });
   }, []);
 
   useEffect(() => {
@@ -358,6 +379,9 @@ export default function Step1Upload({ onProcess, loading }) {
     onProcess({ month: selectedMonth, uploads: uploadedAccounts, plaidAccounts, savingsAccounts });
   };
 
+  const mappedPlaidIds = new Set(accounts.map(a => a.plaidAccountId).filter(Boolean));
+  const unmappedAccounts = storedPlaidAccounts.filter(a => !mappedPlaidIds.has(a.account_id));
+
   const uploadCount = accounts.filter(a => uploads[a.id]?.length > 0 && a.dataSource !== 'plaid').length;
   const plaidConnectedCount = accounts.filter(a => a.dataSource === 'plaid' && a.plaidAccountId).length;
   const readyCount = uploadCount + plaidConnectedCount;
@@ -416,6 +440,8 @@ export default function Step1Upload({ onProcess, loading }) {
               onReconnect={handleReconnect}
               onSwitchToPlaid={handleSwitchToPlaid}
               onSwitchToManual={handleSwitchToManual}
+              unmappedAccounts={unmappedAccounts}
+              onReuseAccount={() => setPlaidPickerAccounts(unmappedAccounts)}
             />
           ))}
         </div>

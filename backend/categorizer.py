@@ -32,6 +32,8 @@ PRE_CATEGORIZE_PATTERNS = [
     ('disney+', 'Subscription', 95),
     ('apple.com/bill', 'Subscription', 95),
     ('apple one', 'Subscription', 95),
+    ('apple store', 'Shopping', 90),
+    ('apple', 'Subscription', 85),
     ('notion', 'Subscription', 95),
     ('figma', 'Subscription', 95),
     ('github', 'Subscription', 95),
@@ -138,12 +140,32 @@ PLAID_CATEGORY_MAP = {
     'INCOME_WAGES':                         'Income',
     'INCOME_TAX_REFUND':                    'Income',
     'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT':    'Transfer',
+    'TRANSFER_IN_TRANSFER_IN_FROM_APPS':    'Transfer',
+    'TRANSFER_OUT_TRANSFER_OUT_FROM_APPS':  'Transfer',
+    'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS': 'Transfer',
     'BANK_FEES_ATM_FEES':                   'Bank fees',
     'BANK_FEES_FOREIGN_TRANSACTION_FEES':   'Bank fees',
     'BANK_FEES_OTHER_BANK_FEES':            'Bank fees',
     'PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS': 'Wellness',
     'PERSONAL_CARE_HAIR_AND_BEAUTY':        'Wellness',
     'GOVERNMENT_AND_NON_PROFIT_DONATIONS':  'Offering',
+    'ENTERTAINMENT_TV_AND_MOVIES':          'Subscription',
+    'GENERAL_SERVICES_ACCOUNTING_AND_FINANCIAL_PLANNING': 'Subscription',
+    'GENERAL_SERVICES_INSURANCE':           'Home Insurance',
+    'GENERAL_MERCHANDISE_ELECTRONICS':      'Shopping',
+}
+
+# Food and transit categories are reliable even at LOW confidence —
+# Plaid's LOW here means "no merchant record, inferred from signals" which is still accurate for these.
+PLAID_TRUSTED_AT_ANY_CONFIDENCE = {
+    'FOOD_AND_DRINK_RESTAURANT',
+    'FOOD_AND_DRINK_FAST_FOOD',
+    'FOOD_AND_DRINK_COFFEE',
+    'FOOD_AND_DRINK_BEER_WINE_AND_LIQUOR',
+    'FOOD_AND_DRINK_VENDING_MACHINES',
+    'FOOD_AND_DRINK_GROCERIES',
+    'TRANSPORTATION_PUBLIC_TRANSIT',
+    'TRANSPORTATION_TAXIS_AND_RIDE_SHARES',
 }
 
 CATEGORIES = [
@@ -202,7 +224,9 @@ AMBIGUOUS MERCHANTS:
 - Any SaaS/software tool not already categorized → Subscription at 75%
 
 PLAID HINT:
-- If a "plaid_hint" field is present, use it as a strong signal. Apply your own judgment if it seems too broad.
+- If a "plaid_hint" field is present, treat it as a supplementary reference — your rules above take priority.
+- Only use plaid_hint to break a tie when no rule clearly applies to the merchant.
+- Ignore hints containing "OTHER" (e.g. ENTERTAINMENT_OTHER, GENERAL_SERVICES_OTHER) — these are Plaid's catch-alls and are often wrong. Use merchant name inference instead.
 
 FALLBACK — always make a best guess before using Misc. Spending:
 - Name evokes eating/drinking (nature words, city names, food-adjacent) → Dine out at 55%
@@ -246,9 +270,11 @@ def categorize_chunk(chunk: list[dict]) -> list[dict]:
             # Tier 1: Plaid personal_finance_category
             plaid_detailed = t.get('plaid_category_detailed')
             plaid_confidence = t.get('plaid_category_confidence')
+            high_confidence = plaid_confidence in ('VERY_HIGH', 'HIGH', 'MEDIUM')
+            trusted_low = plaid_detailed in PLAID_TRUSTED_AT_ANY_CONFIDENCE
             if (plaid_detailed and
-                    plaid_confidence in ('VERY_HIGH', 'HIGH') and
-                    plaid_detailed in PLAID_CATEGORY_MAP):
+                    plaid_detailed in PLAID_CATEGORY_MAP and
+                    (high_confidence or trusted_low)):
                 category = PLAID_CATEGORY_MAP[plaid_detailed]
                 pre_results[i] = (category, 90)
                 print(f"  [T1] {desc[:30]} → {category} (plaid: {plaid_detailed})")

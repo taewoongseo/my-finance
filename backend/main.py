@@ -154,10 +154,11 @@ def fetch_plaid_transactions(access_token: str, account_id: str, account_name: s
         for t in response["transactions"]:
             raw_amount = float(t["amount"])
             pfc = t.get("personal_finance_category")
+            desc = t.get("merchant_name") or t["name"]
             result.append({
                 '_id': t["transaction_id"],
                 'date': str(t["date"]),
-                'description': t.get("merchant_name") or t["name"],
+                'description': desc,
                 'amount': abs(raw_amount),
                 'type': 'debit' if raw_amount >= 0 else 'credit',
                 'account': account_name,

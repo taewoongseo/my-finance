@@ -493,12 +493,15 @@ function SavingsSection({ month, onTotalChange }) {
   const [amounts, setAmounts] = useState({});
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
+  const [savingsLoaded, setSavingsLoaded] = useState(false);
 
   useEffect(() => {
+    setSavingsLoaded(false);
     getSavingsAccounts(getToken).then(saved => {
       setAccounts(saved);
       const savedAmounts = JSON.parse(localStorage.getItem(`savings_amounts_${month}`) || '{}');
       setAmounts(savedAmounts);
+      setSavingsLoaded(true);
     });
   }, [month]);
 
@@ -525,8 +528,9 @@ function SavingsSection({ month, onTotalChange }) {
   const total = accounts.reduce((sum, a) => sum + (parseFloat(amounts[a.id]) || 0), 0);
 
   useEffect(() => {
-    if (onTotalChange) onTotalChange(total); // ← report total upward
-  }, [total]);
+    if (!savingsLoaded) return;
+    if (onTotalChange) onTotalChange(total);
+  }, [total, savingsLoaded]);
 
   return (
     <div style={{ background: '#111', border: '0.5px solid #1e1e1e', borderRadius: 16, padding: 24, marginTop: 16 }}>
@@ -665,8 +669,9 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const total = income.directDeposit + income.other.reduce((s, o) => s + o.amount, 0);
   
     useEffect(() => {
+      if (!incomeLoaded) return;
       onTotalChange(total);
-    }, [total]);
+    }, [total, incomeLoaded]);
   
     return (
       <div style={{ background: '#111', border: '0.5px solid #1e1e1e', borderRadius: 16, padding: 24, marginBottom: 16 }}>
@@ -769,8 +774,8 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
   export default function Step3Dashboard({ finalTransactions: initialTransactions, offsets, month, onBack, onReprocess }) {
     const { getToken } = useAuth();
     const [transactions, setTransactions] = useState(initialTransactions);
-    const [totalIncome, setTotalIncome] = useState(0);
-    const [totalSaved, setTotalSaved] = useState(0);
+    const [totalIncome, setTotalIncome] = useState(null);
+    const [totalSaved, setTotalSaved] = useState(null);
   
     const handleCategoryChange = (transactionId, newCategory) => {
       setTransactions(prev => prev.map(t =>
@@ -781,8 +786,6 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     };
   
     const handleDeleteTransaction = (transactionId) => {
-      console.log('deleting:', transactionId);
-      console.log('transactions ids:', transactions.map(t => ({ _id: t._id, id: t.id })));
       setTransactions(prev => prev.filter(t =>
         t._id !== transactionId && t.id !== transactionId
       ));
@@ -816,8 +819,8 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const categories = aggregateByCategory(transactions, localOffsets || []);
     const maxAmount = Math.max(...categories.map(c => c.total), 1);
     const totalExpenses = categories.reduce((sum, c) => sum + Math.max(c.total, 0), 0);
-    const cashFlow = totalIncome - totalExpenses - totalSaved;
-    const savingsRate = totalIncome > 0 ? ((totalSaved / totalIncome) * 100).toFixed(1) : '—';
+    const cashFlow = (totalIncome ?? 0) - totalExpenses - (totalSaved ?? 0);
+    const savingsRate = totalIncome > 0 ? (((totalSaved ?? 0) / totalIncome) * 100).toFixed(1) : '—';
   
     const autoIncome = transactions
       .filter(t => t.type === 'credit' && t.category === 'Income')
@@ -867,22 +870,15 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
               <h1 style={{ fontSize: 24, fontWeight: 500, letterSpacing: '-0.5px', marginBottom: 4 }}>{monthLabel}</h1>
               <div style={{ fontSize: 12, color: '#555' }}>{transactions.length} transactions</div>
             </div>
-            <button style={{
-              background: '#c8f04a', color: '#0a0a0a', border: 'none',
-              padding: '10px 20px', borderRadius: 8, fontSize: 13,
-              fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-            }}>
-              Sync to Sheets
-            </button>
           </div>
   
           {/* Stat cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 32 }}>
-            <StatCard label="Net income" value={`$${totalIncome.toFixed(2)}`} type="neutral" />
+            <StatCard label="Net income" value={totalIncome === null ? '—' : `$${totalIncome.toFixed(2)}`} type="neutral" />
             <StatCard label="Expenses" value={`$${totalExpenses.toFixed(2)}`} type="negative" />
-            <StatCard label="Saved" value={`$${totalSaved.toFixed(2)}`} type="positive" />
-            <StatCard label="Savings rate" value={`${savingsRate}%`} sub={totalSaved > 0 ? `${savingsRate}% of income` : 'add savings below'} type="positive" />
-            <StatCard label="Cash flow" value={`$${cashFlow.toFixed(2)}`} sub="unaccounted" type={cashFlow >= 0 ? 'positive' : 'negative'} />
+            <StatCard label="Saved" value={totalSaved === null ? '—' : `$${totalSaved.toFixed(2)}`} type="positive" />
+            <StatCard label="Savings rate" value={totalIncome === null ? '—' : `${savingsRate}%`} sub={totalSaved > 0 ? `${savingsRate}% of income` : 'add savings below'} type="positive" />
+            <StatCard label="Cash flow" value={totalIncome === null || totalSaved === null ? '—' : `$${cashFlow.toFixed(2)}`} sub="unaccounted" type={cashFlow >= 0 ? 'positive' : 'negative'} />
           </div>
   
           {/* Income section */}

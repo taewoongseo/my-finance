@@ -1,22 +1,53 @@
+# PRD: Add logout button to sidebar/nav
+
+**Ticket:** MYF-18
+**Status:** ✅ Complete
+**Created:** 2026-05-12
+
 ---
-id: MYF-18
-title: Add logout button to sidebar/nav
-type: feature
-status: backlog
-linear_url: https://linear.app/myfinance/issue/MYF-18/add-logout-button-to-sidebarnav
-created: 2026-05-11
+
+## TL;DR
+There is no way to sign out of the app from any screen. Add a fixed top-right avatar button with a dropdown showing the user's name, email, and a sign out option.
+
 ---
 
-## What
-Add a logout button to a persistent sidebar or nav bar so users can sign out from anywhere in the app.
+## Problem
+Once logged in, there is no logout button visible on any screen — Home, Upload, Review, or Dashboard. Users are stuck with no way to sign out.
 
-## Expected Outcome
-A visible logout button (sidebar or top nav) that calls Clerk signOut and redirects to the login/home screen. Google SSO is the only auth method — no email/password needed.
+---
 
-## Affected Files
-- `frontend/src/App.js` — add sidebar or nav layout component with logout button using Clerk `useClerk().signOut()`
+## Solution
+A fixed-position avatar circle in the top-right corner of every authenticated screen. Clicking it opens a small dropdown with the user's Google profile photo, name, email, and a "Sign out" button. Signing out redirects to the LoginScreen (already handled by `<SignedOut>` in App.js). No shared layout wrapper needed — the component floats over existing layouts.
 
-## Risks / Notes
-- No dedicated sidebar component exists yet — may need to create a lightweight layout wrapper
-- Logout should work from any route (/upload, /review, /month/:month)
-- After sign-out, user should land on the Clerk sign-in page or a public landing page
+---
+
+## Tasks
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Create `UserMenu` component in `frontend/src/components/UserMenu.js`: fixed top-right avatar using `useUser().user.imageUrl`; click toggles a dropdown with name, email, divider, and "Sign out" button; outside click closes it; calls `useClerk().signOut()` on sign out | ✅ Done |
+| 2 | Import and render `<UserMenu />` inside the `<SignedIn>` block in `App.js`, outside the `<Routes>` so it appears on every authenticated screen | ✅ Done |
+
+**Status legend:**
+- ⬜ Not started
+- 🟡 In progress
+- ✅ Done
+- ❌ Blocked
+
+---
+
+## Out of Scope
+- Sidebar or top nav bar restructuring
+- Putting the logout inside Step3Dashboard's left sidebar
+- Any other account management (password change, delete account, etc.)
+
+---
+
+## Files That Will Change
+- `frontend/src/components/UserMenu.js` — new component: fixed avatar + dropdown with sign out
+- `frontend/src/App.js` — render `<UserMenu />` inside `<SignedIn>` outside `<Routes>`
+
+---
+
+## Open Questions
+None.

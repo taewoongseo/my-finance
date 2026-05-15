@@ -5,6 +5,7 @@ import Step1Upload from './components/Step1Upload';
 import Step2Review from './components/Step2Review';
 import Step3Dashboard from './components/Step3Dashboard';
 import LoginScreen from './components/LoginScreen';
+import UserMenu from './components/UserMenu';
 import { saveMonthData, getMonthData, getAllMonths, deleteMonthData } from './utils/storage';
 
 const CLERK_PUBLISHABLE_KEY = process.env.REACT_APP_CLERK_PUBLISHABLE_KEY;
@@ -13,10 +14,11 @@ const CLERK_PUBLISHABLE_KEY = process.env.REACT_APP_CLERK_PUBLISHABLE_KEY;
 function HomeScreen() {
   const navigate = useNavigate();
   const [savedMonths, setSavedMonths] = useState({});
+  const [loading, setLoading] = useState(true);
   const { getToken } = useAuth();
 
   useEffect(() => {
-    getAllMonths(getToken).then(setSavedMonths);
+    getAllMonths(getToken).then(data => { setSavedMonths(data); setLoading(false); });
   }, []);
 
   const formatMonth = (key) => {
@@ -53,7 +55,12 @@ function HomeScreen() {
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-          {monthKeys.length === 0 && (
+          {loading && (
+            <div style={{ fontSize: 13, color: '#333', textAlign: 'center', padding: '32px 0' }}>
+              Loading…
+            </div>
+          )}
+          {!loading && monthKeys.length === 0 && (
             <div style={{ fontSize: 13, color: '#444', textAlign: 'center', padding: '32px 0' }}>
               No months processed yet
             </div>
@@ -195,7 +202,11 @@ function DashboardScreen() {
     });
   }, [month]);
 
-  if (!data) return null;
+  if (!data) return (
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontSize: 13, color: '#333', fontFamily: "'DM Sans', sans-serif" }}>Loading…</span>
+    </div>
+  );
 
   return (
     <Step3Dashboard
@@ -224,6 +235,7 @@ export default function App() {
             <>
               <SignedOut><LoginScreen /></SignedOut>
               <SignedIn>
+                <UserMenu />
                 <Routes>
                   <Route path="/" element={<HomeScreen />} />
                   <Route path="/upload" element={<UploadScreen />} />

@@ -10,11 +10,131 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 CONFIDENCE_THRESHOLD = 70
 CHUNK_SIZE = 50
 
-# Patterns applied before LLM — description substring → (category, confidence)
+# Patterns applied before LLM — (substring, category, confidence)
+# Checked case-insensitively except emoji/Korean entries.
+# Order matters: first match wins.
 PRE_CATEGORIZE_PATTERNS = [
+    # ── Emoji / Korean (case-sensitive) ──────────────────────
     ('🎁', 'Gift', 95),
     ('선물', 'Gift', 95),
+
+    # ── Transit ───────────────────────────────────────────────
+    ('mta', 'Metro/Ferry', 95),
+    ('metrocard', 'Metro/Ferry', 95),
+
+    # ── Ride share ────────────────────────────────────────────
+    ('uber', 'Uber/Lyft', 95),
+    ('lyft', 'Uber/Lyft', 95),
+
+    # ── Subscriptions ─────────────────────────────────────────
+    ('netflix', 'Subscription', 95),
+    ('spotify', 'Subscription', 95),
+    ('hulu', 'Subscription', 95),
+    ('disney+', 'Subscription', 95),
+    ('apple.com/bill', 'Subscription', 95),
+    ('apple one', 'Subscription', 95),
+    ('notion', 'Subscription', 95),
+    ('figma', 'Subscription', 95),
+    ('github', 'Subscription', 95),
+    ('webflow', 'Subscription', 95),
+    ('squarespace', 'Subscription', 95),
+
+    # ── Utilities ─────────────────────────────────────────────
+    ('con edison', 'Energy/Electricity', 95),
+    ('coned', 'Energy/Electricity', 95),
+    ('verizon', 'Wifi', 95),
+    ('mint mobile', 'Phone', 95),
+    ('at&t', 'Phone', 95),
+    ('t-mobile', 'Phone', 95),
+
+    # ── Income ────────────────────────────────────────────────
+    ('gusto', 'Income', 95),
+    ('adp', 'Income', 95),
+
+    # ── Rent ──────────────────────────────────────────────────
+    ('bilt rent', 'Rent', 95),
+    ('bps bilt', 'Rent', 95),
+
+    # ── Giving ────────────────────────────────────────────────
+    ('in2 onnuri', 'Offering', 95),
+    ('church', 'Offering', 90),
+    ('tithe', 'Offering', 95),
+
+    # ── Groceries ─────────────────────────────────────────────
+    ('h mart', 'Groceries', 90),
+    ('hmart', 'Groceries', 90),
+    ('trader joe', 'Groceries', 90),
+    ('whole foods', 'Groceries', 90),
+    ('costco', 'Groceries', 90),
+    ('grocery', 'Groceries', 85),
+    ('groceries', 'Groceries', 85),
+    ('supermarket', 'Groceries', 85),
+
+    # ── Dine out (keyword patterns) ───────────────────────────
+    ('tst*', 'Dine out', 90),
+    ('restaurant', 'Dine out', 85),
+    ('kitchen', 'Dine out', 85),
+    ('bistro', 'Dine out', 85),
+    ('grill', 'Dine out', 85),
+    ('diner', 'Dine out', 85),
+    ('eatery', 'Dine out', 85),
+    ('trattoria', 'Dine out', 85),
+    ('steakhouse', 'Dine out', 85),
+
+    # ── Drinks/snacks (keyword patterns) ─────────────────────
+    ('cafe', 'Drinks/snacks', 85),
+    ('coffee', 'Drinks/snacks', 85),
+    ('espresso', 'Drinks/snacks', 85),
+    ('latte', 'Drinks/snacks', 85),
+    ('boba', 'Drinks/snacks', 85),
+    ('bubble tea', 'Drinks/snacks', 85),
+    ('donut', 'Drinks/snacks', 85),
+    ('bakery', 'Drinks/snacks', 85),
+    ('bagel', 'Drinks/snacks', 85),
+
+    # ── Wellness ──────────────────────────────────────────────
+    ('gym', 'Wellness', 85),
+    ('fitness', 'Wellness', 85),
+    ('yoga', 'Wellness', 85),
+    (' spa', 'Wellness', 85),
+    ('salon', 'Wellness', 85),
+    ('pharmacy', 'Wellness', 85),
+    ('cvs', 'Wellness', 85),
+    ('walgreens', 'Wellness', 85),
+    ('duane reade', 'Wellness', 85),
 ]
+
+# Emoji/Korean entries that need case-sensitive matching
+_CASE_SENSITIVE_PATTERNS = {'🎁', '선물'}
+
+# Plaid personal_finance_category.detailed → our category (Tier 1)
+# Only unambiguous mappings. Anything not listed falls through to LLM.
+PLAID_CATEGORY_MAP = {
+    'FOOD_AND_DRINK_RESTAURANT':            'Dine out',
+    'FOOD_AND_DRINK_FAST_FOOD':             'Dine out',
+    'FOOD_AND_DRINK_COFFEE':                'Drinks/snacks',
+    'FOOD_AND_DRINK_BEER_WINE_AND_LIQUOR':  'Drinks/snacks',
+    'FOOD_AND_DRINK_VENDING_MACHINES':      'Drinks/snacks',
+    'FOOD_AND_DRINK_GROCERIES':             'Groceries',
+    'TRANSPORTATION_TAXIS_AND_RIDE_SHARES': 'Uber/Lyft',
+    'TRANSPORTATION_PUBLIC_TRANSIT':        'Metro/Ferry',
+    'TRAVEL_FLIGHTS':                       'Flights/Travel',
+    'TRAVEL_LODGING':                       'Flights/Travel',
+    'TRAVEL_RENTAL_CARS':                   'Flights/Travel',
+    'RENT_AND_UTILITIES_RENT':              'Rent',
+    'RENT_AND_UTILITIES_GAS_AND_ELECTRICITY': 'Energy/Electricity',
+    'RENT_AND_UTILITIES_INTERNET_AND_CABLE':  'Wifi',
+    'RENT_AND_UTILITIES_TELEPHONE':         'Phone',
+    'INCOME_WAGES':                         'Income',
+    'INCOME_TAX_REFUND':                    'Income',
+    'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT':    'Transfer',
+    'BANK_FEES_ATM_FEES':                   'Bank fees',
+    'BANK_FEES_FOREIGN_TRANSACTION_FEES':   'Bank fees',
+    'BANK_FEES_OTHER_BANK_FEES':            'Bank fees',
+    'PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS': 'Wellness',
+    'PERSONAL_CARE_HAIR_AND_BEAUTY':        'Wellness',
+    'GOVERNMENT_AND_NON_PROFIT_DONATIONS':  'Offering',
+}
 
 CATEGORIES = [
     "Rent", "Home Insurance",
@@ -28,95 +148,71 @@ CATEGORIES = [
 ]
 
 SYSTEM_PROMPT = f"""You are a personal finance categorization assistant for a user in New York City.
-Given a list of bank transactions, assign each one a category and confidence score.
+Transactions reaching you have already been filtered — common merchants and obvious keyword matches are pre-categorized. You only see ambiguous or unrecognized transactions.
 
 Available categories (use EXACTLY these labels):
 {", ".join(CATEGORIES)}
 
-STEP 1 — TRANSLATE first if needed.
+TRANSLATE first if needed.
 If description contains non-English text, translate or interpret it first, then categorize. Do not output the translation — just use it to determine the category.
 
-STEP 2 — APPLY these rules in ORDER (earlier rules take priority):
+RULES (apply in order, first match wins):
 
-EXACT MERCHANT MATCHES → confidence 95:
-- MTA, MTA PAYGO, subway, metrocard → Metro/Ferry
-- Uber, Lyft (ride charges only) → Uber/Lyft
-- Netflix, Spotify, Hulu, Disney+, Apple.com/bill, Apple One → Subscription
-- Webflow, Squarespace, Github, Notion, Figma, any SaaS tool → Subscription
-- Con Edison, CONED → Energy/Electricity
-- Verizon → Wifi
-- Mint Mobile, Mint → Phone
-- AT&T, T-Mobile → Phone
-- Gusto, Gusto Pay, ADP, direct deposit → Income
-- Bilt Rent, BPS Bilt, rent charge, rent adjustment, Bilt Housing, bilt housing → Rent
-- IN2 ONNURI, church, tithe → Offering
-- Foreign transaction fee, bank fee, service fee → Bank fees
-- Venmo Payment, Standard Transfer, ACH transfer, payment thank you → Transfer
-- A transaction whose description is exactly or nearly "Payment" (e.g. "Payment", "Online Payment") with no merchant context → Transfer at 90% (this is a credit card payment received by the card, not income)
+SQ* PREFIX (Square POS) → confidence 85:
+- SQ* + any food/cafe/bar/bakery/drink word → Drinks/snacks
+- SQ* + restaurant/grill/kitchen/bistro → Dine out
+- SQ* with no recognizable food word → Shopping at 70%
 
-PATTERN MATCHES → confidence 85-90:
-- TST* prefix → Dine out (TST is Toast POS, used by restaurants)
-- SQ* prefix + any food/cafe/bar/bakery word → Drinks/snacks
-- SQ* prefix + restaurant/grill/kitchen/bistro → Dine out
-- "cafe", "coffee", "espresso", "latte", "boba", "bubble tea" in name → Drinks/snacks
-- "restaurant", "kitchen", "bistro", "grill", "diner", "eatery" in name → Dine out
-- "donut", "bakery", "pastry", "bagel" in name → Drinks/snacks
-- "gym", "fitness", "yoga", "spa", "salon", "eyecare", "dental", "clinic" → Wellness
-- "pharmacy", "drugstore", "CVS", "Walgreens", "Duane Reade" → Wellness
-- Whole Foods, Trader Joe's, H Mart, Costco, grocery, supermarket → Groceries
+REMAINING PATTERN MATCHES → confidence 85-90:
+- "eyecare", "dental", "clinic", "drugstore" → Wellness
+- "pastry" → Drinks/snacks
 - Flowers, florist, FTD, 1-800-Flowers → Gift
-- 🎁 gift emoji anywhere in description → Gift at 95
-- 선물 (Korean for "gift") anywhere in description, with or without a name prefix (e.g. 상우선물, 친구선물) → Gift at 95
-- Airbnb → Flights/Travel (accommodation)
-- Hotel chains (Marriott, Hilton, Hyatt, etc.) → Flights/Travel
+- Airbnb → Flights/Travel
+- Hotel chains (Marriott, Hilton, Hyatt, Sheraton, etc.) → Flights/Travel
+- Foreign transaction fee, bank fee, service fee → Bank fees
+- Venmo Payment, Standard Transfer, ACH transfer → Transfer
+- A description that is exactly or nearly "Payment" or "Online Payment" with no merchant context → Transfer at 90%
 
-VENMO SPECIAL RULES:
-- "Venmo to [name] — [note]": translate note if needed, categorize by note content
-  Examples: "dinner" / "밥" / "🍜" → Dine out
-            "uber" / "taxi" / "ride" → Uber/Lyft  
-            "groceries" / "장보기" / "마트" → Groceries
-            "drinks" / "bar" / "🍺" → Drinks/snacks
-            "flowers" / "gift" / "선물" → Gift
-            "coffee" / "카페" / "☕" → Drinks/snacks
-            "tip" / "팁" → Dine out
-            unclear note or emoji only → Misc. Spending at 50%
+VENMO DEBIT NOTES — categorize by the note content after the dash:
+- "dinner" / "밥" / "🍜" / "lunch" / "식사" → Dine out
+- "uber" / "taxi" / "ride" / "차" → Uber/Lyft
+- "groceries" / "장보기" / "마트" / "mart" → Groceries
+- "drinks" / "bar" / "술" / "🍺" → Drinks/snacks
+- "coffee" / "카페" / "☕" / "boba" → Drinks/snacks
+- "flowers" / "gift" / "선물" → Gift
+- "tip" / "팁" → Dine out
+- unclear note or emoji only → Misc. Spending at 50%
 - "Venmo Payment" (no name, no note) → Transfer at 95%
 
-AMBIGUOUS RULES → confidence 70:
-- Amazon, AMZN → Shopping at 65% (Amazon sells everything — always flag)
-- Department stores (Bloomingdale's, Macy's, Nordstrom) → Shopping
-- Target → Shopping at 75% (could be groceries or household)
-- TST*[hotel name] → Flights/Travel takes priority over TST* = Dine out rule
+AMBIGUOUS MERCHANTS:
+- Amazon, AMZN → Shopping at 65% (sells everything — always flag)
+- Target → Shopping at 75%
+- Department stores (Bloomingdale's, Macy's, Nordstrom) → Shopping at 80%
+- Any SaaS/software tool not already categorized → Subscription at 75%
 
+PLAID HINT:
+- If a "plaid_hint" field is present, use it as a strong signal. Apply your own judgment if it seems too broad.
 
-FALLBACK — make your best guess first, before defaulting to Misc. Spending:
-- If merchant name sounds like a place people eat/drink (evocative name, nature words, 
-  city references, food-adjacent words) → Dine out at 50-60%
-- If merchant name sounds like a retail/product store → Shopping at 50-60%
-- If you really can't guess and/or if merchant name is completely unrecognizable with no inference possible → Misc. Spending at 50%
-- A low confidence guess (50-65%) is always better than Misc. Spending because it gives the user a starting point to correct from
+FALLBACK — always make a best guess before using Misc. Spending:
+- Name evokes eating/drinking (nature words, city names, food-adjacent) → Dine out at 55%
+- Name evokes retail/products → Shopping at 55%
+- Completely unrecognizable → Misc. Spending at 50%
+- A low-confidence guess is always better than Misc. Spending — it gives the user a starting point
 
+CONFIDENCE CALIBRATION:
+- 90-95: strong pattern or known merchant type
+- 70-85: reasonable inference, category is fairly clear
+- 50-65: ambiguous — user should confirm
+- 30: truly unknown
 
-- Unknown merchant with no recognizable pattern → Misc. Spending at 50%
-- Note that doesn't match any food/transport category → Misc. Spending at 50%
-
-CONFIDENCE CALIBRATION — use these exact thresholds:
-- 95: you are certain (MTA, Netflix, Uber)
-- 85-90: strong pattern match (TST*, cafe in name, known restaurant chain)
-- 70-80: reasonable guess, merchant category is fairly clear
-- 50-65: ambiguous — you're guessing, user should confirm
-- 30: completely unknown, default fallback
-
-CRITICAL RULES:
+CRITICAL:
 - Do NOT modify the description field
 - Category must be EXACTLY one of the listed categories
-- Priority order: Exact match > Pattern match > Venmo rules > Ambiguous > Fallback
-- When two rules conflict, use the one listed EARLIER in this prompt
 
 You will receive a JSON array where each item has an "i" index field.
 Return ONLY a JSON array of the same length. Each item must have exactly three fields:
 - "i": the same index number from the input
-- "category": exactly one of the categories above  
+- "category": exactly one of the categories above
 - "confidence": 0-100
 
 No explanation, no markdown."""
@@ -127,25 +223,42 @@ def categorize_chunk(chunk: list[dict]) -> list[dict]:
 
     for i, t in enumerate(chunk):
         desc = t.get('description', '')
+        desc_lower = desc.lower()
         matched = False
         for pattern, category, confidence in PRE_CATEGORIZE_PATTERNS:
-            if pattern in desc:
+            haystack = desc if pattern in _CASE_SENSITIVE_PATTERNS else desc_lower
+            if pattern in haystack:
                 pre_results[i] = (category, confidence)
-                print(f"  pre-categorized: {desc[:30]} → {category} ({confidence}%)")
+                print(f"  [T0] {desc[:30]} → {category} ({confidence}%)")
                 matched = True
                 break
         if not matched:
-            llm_indices.append(i)
+            # Tier 1: Plaid personal_finance_category
+            plaid_detailed = t.get('plaid_category_detailed')
+            plaid_confidence = t.get('plaid_category_confidence')
+            if (plaid_detailed and
+                    plaid_confidence in ('VERY_HIGH', 'HIGH') and
+                    plaid_detailed in PLAID_CATEGORY_MAP):
+                category = PLAID_CATEGORY_MAP[plaid_detailed]
+                pre_results[i] = (category, 90)
+                print(f"  [T1] {desc[:30]} → {category} (plaid: {plaid_detailed})")
+            else:
+                llm_indices.append(i)
 
-    slim = [
-        {
+    def _slim_entry(i):
+        t = chunk[i]
+        entry = {
             'i': i,
-            'description': chunk[i].get('description', ''),
-            'amount': chunk[i].get('amount', 0),
-            'type': chunk[i].get('type', 'debit'),
+            'description': t.get('description', ''),
+            'amount': t.get('amount', 0),
+            'type': t.get('type', 'debit'),
         }
-        for i in llm_indices
-    ]
+        plaid_hint = t.get('plaid_category_detailed')
+        if plaid_hint:
+            entry['plaid_hint'] = plaid_hint
+        return entry
+
+    slim = [_slim_entry(i) for i in llm_indices]
 
     llm_result_map = {}
     if slim:

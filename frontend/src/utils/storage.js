@@ -62,9 +62,10 @@ export const saveMonthData = async (monthKey, data, getToken) => {
 export const getAllMonths = async (getToken) => {
   try {
     const res = await authFetch(`${API_URL}/data/months`, getToken);
+    if (!res.ok) return null;
     const json = await res.json();
     return json.data || {};
-  } catch { return {}; }
+  } catch { return null; }
 };
 
 export const deleteMonthData = async (monthKey, getToken) => {

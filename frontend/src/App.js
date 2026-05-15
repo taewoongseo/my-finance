@@ -15,11 +15,20 @@ function HomeScreen() {
   const navigate = useNavigate();
   const [savedMonths, setSavedMonths] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const { getToken } = useAuth();
 
-  useEffect(() => {
-    getAllMonths(getToken).then(data => { setSavedMonths(data); setLoading(false); });
-  }, []);
+  const loadMonths = () => {
+    setLoading(true);
+    setLoadError(false);
+    getAllMonths(getToken).then(data => {
+      if (data === null) { setLoadError(true); setLoading(false); return; }
+      setSavedMonths(data);
+      setLoading(false);
+    });
+  };
+
+  useEffect(() => { loadMonths(); }, []);
 
   const formatMonth = (key) => {
     const d = new Date(key + '-15');
@@ -29,7 +38,7 @@ function HomeScreen() {
   const handleDelete = async (key, e) => {
     e.stopPropagation();
     await deleteMonthData(key, getToken);
-    getAllMonths(getToken).then(setSavedMonths);
+    getAllMonths(getToken).then(data => { if (data !== null) setSavedMonths(data); });
   };
 
   const monthKeys = Object.keys(savedMonths).sort().reverse();
@@ -60,7 +69,15 @@ function HomeScreen() {
               Loading…
             </div>
           )}
-          {!loading && monthKeys.length === 0 && (
+          {!loading && loadError && (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <div style={{ fontSize: 13, color: '#555', marginBottom: 12 }}>Failed to load months</div>
+              <button onClick={loadMonths} style={{ fontSize: 12, color: '#c8f04a', background: 'none', border: '0.5px solid #c8f04a', borderRadius: 6, padding: '6px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Retry
+              </button>
+            </div>
+          )}
+          {!loading && !loadError && monthKeys.length === 0 && (
             <div style={{ fontSize: 13, color: '#444', textAlign: 'center', padding: '32px 0' }}>
               No months processed yet
             </div>

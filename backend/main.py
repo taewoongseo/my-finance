@@ -143,13 +143,17 @@ def fetch_plaid_transactions(access_token: str, account_id: str, account_name: s
         year, mon = map(int, month.split('-'))
         start = date(year, mon, 1)
         end = date(year, mon, calendar.monthrange(year, mon)[1])
-        options = TransactionsGetRequestOptions(account_ids=[account_id])
+        options = TransactionsGetRequestOptions(
+            account_ids=[account_id],
+            include_personal_finance_category=True,
+        )
         response = plaid_client.transactions_get(
             TransactionsGetRequest(access_token=access_token, start_date=start, end_date=end, options=options)
         )
         result = []
         for t in response["transactions"]:
             raw_amount = float(t["amount"])
+            pfc = t.get("personal_finance_category")
             result.append({
                 '_id': t["transaction_id"],
                 'date': str(t["date"]),
@@ -158,6 +162,8 @@ def fetch_plaid_transactions(access_token: str, account_id: str, account_name: s
                 'type': 'debit' if raw_amount >= 0 else 'credit',
                 'account': account_name,
                 'account_type': account_type,
+                'plaid_category_detailed': pfc["detailed"] if pfc else None,
+                'plaid_category_confidence': pfc["confidence_level"] if pfc else None,
             })
         return result
     except Exception as e:

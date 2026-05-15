@@ -11,8 +11,7 @@ CONFIDENCE_THRESHOLD = 70
 CHUNK_SIZE = 50
 
 # Patterns applied before LLM — (substring, category, confidence)
-# Checked case-insensitively except emoji/Korean entries.
-# Order matters: first match wins.
+# Matched case-insensitively against description. Order matters: first match wins.
 PRE_CATEGORIZE_PATTERNS = [
     # ── Emoji / Korean (case-sensitive) ──────────────────────
     ('🎁', 'Gift', 95),
@@ -55,7 +54,20 @@ PRE_CATEGORIZE_PATTERNS = [
     ('bilt rent', 'Rent', 95),
     ('bps bilt', 'Rent', 95),
 
-    # ── Giving ────────────────────────────────────────────────
+    # ── Gift (occasions) ──────────────────────────────────────
+    ('birthday', 'Gift', 90),
+    ('bday', 'Gift', 90),
+    ('housewarming', 'Gift', 90),
+    ('anniversary', 'Gift', 88),
+    ('wedding', 'Gift', 90),
+    ('graduation', 'Gift', 90),
+    ('baby shower', 'Gift', 90),
+    ('생일', 'Gift', 90),   # birthday
+    ('결혼', 'Gift', 90),   # wedding
+    ('졸업', 'Gift', 90),   # graduation
+    ('새집', 'Gift', 90),   # housewarming
+
+    # ── Offering ──────────────────────────────────────────────
     ('in2 onnuri', 'Offering', 95),
     ('church', 'Offering', 90),
     ('tithe', 'Offering', 95),
@@ -104,8 +116,6 @@ PRE_CATEGORIZE_PATTERNS = [
     ('duane reade', 'Wellness', 85),
 ]
 
-# Emoji/Korean entries that need case-sensitive matching
-_CASE_SENSITIVE_PATTERNS = {'🎁', '선물'}
 
 # Plaid personal_finance_category.detailed → our category (Tier 1)
 # Only unambiguous mappings. Anything not listed falls through to LLM.
@@ -154,7 +164,7 @@ Available categories (use EXACTLY these labels):
 {", ".join(CATEGORIES)}
 
 TRANSLATE first if needed.
-If description contains non-English text, translate or interpret it first, then categorize. Do not output the translation — just use it to determine the category.
+If any part of the description is non-English, translate it to English internally before applying any rule below. Do not output the translation.
 
 RULES (apply in order, first match wins):
 
@@ -164,7 +174,7 @@ SQ* PREFIX (Square POS) → confidence 85:
 - SQ* with no recognizable food word → Shopping at 70%
 
 REMAINING PATTERN MATCHES → confidence 85-90:
-- "eyecare", "dental", "clinic", "drugstore" → Wellness
+- "eyecare", "dental", "clinic", "urgent care", "drugstore" → Wellness
 - "pastry" → Drinks/snacks
 - Flowers, florist, FTD, 1-800-Flowers → Gift
 - Airbnb → Flights/Travel
@@ -173,16 +183,17 @@ REMAINING PATTERN MATCHES → confidence 85-90:
 - Venmo Payment, Standard Transfer, ACH transfer → Transfer
 - A description that is exactly or nearly "Payment" or "Online Payment" with no merchant context → Transfer at 90%
 
-VENMO DEBIT NOTES — categorize by the note content after the dash:
-- "dinner" / "밥" / "🍜" / "lunch" / "식사" → Dine out
-- "uber" / "taxi" / "ride" / "차" → Uber/Lyft
-- "groceries" / "장보기" / "마트" / "mart" → Groceries
-- "drinks" / "bar" / "술" / "🍺" → Drinks/snacks
-- "coffee" / "카페" / "☕" / "boba" → Drinks/snacks
-- "flowers" / "gift" / "선물" → Gift
-- "tip" / "팁" → Dine out
+VENMO DEBIT NOTES — the note follows the last dash in the description. Translate first, then match:
+- dinner, lunch, meal, food, eating → Dine out
+- uber, taxi, cab, ride → Uber/Lyft
+- groceries, grocery, supermarket, market → Groceries
+- drinks, bar, alcohol, beer, wine → Drinks/snacks
+- coffee, cafe, boba, tea → Drinks/snacks
+- gift, present, flowers, birthday, bday, housewarming, anniversary, wedding, graduation, baby shower → Gift
+- tip → Dine out
+- rent, bill split → Rent
 - unclear note or emoji only → Misc. Spending at 50%
-- "Venmo Payment" (no name, no note) → Transfer at 95%
+- "Venmo Payment" with no name or note → Transfer at 95%
 
 AMBIGUOUS MERCHANTS:
 - Amazon, AMZN → Shopping at 65% (sells everything — always flag)
@@ -226,8 +237,7 @@ def categorize_chunk(chunk: list[dict]) -> list[dict]:
         desc_lower = desc.lower()
         matched = False
         for pattern, category, confidence in PRE_CATEGORIZE_PATTERNS:
-            haystack = desc if pattern in _CASE_SENSITIVE_PATTERNS else desc_lower
-            if pattern in haystack:
+            if pattern in desc_lower:
                 pre_results[i] = (category, confidence)
                 print(f"  [T0] {desc[:30]} → {category} ({confidence}%)")
                 matched = True

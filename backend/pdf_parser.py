@@ -119,14 +119,16 @@ def parse_venmo_csv(csv_path: str, account_name: str) -> list[dict]:
 
         sender = str(row.get('From', '')).strip()
         receiver = str(row.get('To', '')).strip()
+        venmo_type = str(row.get('Type', '')).strip()
+        is_transfer = venmo_type == 'Standard Transfer'
 
         if transaction_type == 'credit':
             description = f"Venmo from {sender}" + (f" — {note}" if note else '')
+        elif venmo_type == 'Charge':
+            # For charges, From/To are flipped: From = requester (money receiver), To = payer (account holder)
+            description = f"Venmo to {sender}" + (f" — {note}" if note else '')
         else:
             description = f"Venmo to {receiver}" + (f" — {note}" if note else '')
-
-        venmo_type = str(row.get('Type', '')).strip()
-        is_transfer = venmo_type == 'Standard Transfer'
 
         transactions.append({
             'date': date,

@@ -404,12 +404,6 @@ export default function Step2Review({ monthData, onDone }) {
   const totalReviewed = Object.keys(transferDecisions).length + dismissedCards.size;
   const allDone = totalReviewed >= totalToReview;
 
-  console.log('total transactions:', allTransactions.length);
-  console.log('needs review:', uncertainTransactions.length);
-  console.log('flagged:', flaggedTransactions.length);
-  console.log('auto approved:', autoApproved.length);
-  console.log('transfers detected:', transfers.length);
-
   const handleTransferDecision = (transferId, decision) => {
     setTransferDecisions(prev => ({ ...prev, [transferId]: decision }));
   };

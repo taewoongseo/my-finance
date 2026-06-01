@@ -54,9 +54,12 @@ function aggregateByCategory(transactions, offsets) {
   return Object.values(totals);
 }
 
-function TransactionRow({ transaction, onCategoryChange, onDelete, onDeleteOffset, activeDropdown, setActiveDropdown }) {
+function TransactionRow({ transaction, onCategoryChange, onOffsetCategoryChange, onDelete, onDeleteOffset, activeDropdown, setActiveDropdown }) {
   const transactionId = transaction._id ?? transaction.id;
   const showDropdown = activeDropdown === transactionId;
+  const effectiveCategory = transaction.isOffset
+    ? (transaction.offset_category ?? transaction.category)
+    : transaction.category;
 
   useEffect(() => {
     if (!showDropdown) return;
@@ -64,46 +67,6 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, onDeleteOffse
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, [showDropdown]);
-
-  if (transaction.isOffset) {
-    return (
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '6px 16px', fontSize: 12,
-        borderLeft: '0.5px solid #222', marginLeft: 4,
-      }}>
-        <div>
-          <span style={{ color: '#555', fontFamily: 'monospace', marginRight: 10 }}>
-            {transaction.date}
-          </span>
-          <span style={{ color: '#8ab84a' }}>
-            {transaction.description} (offset)
-          </span>
-          {transaction.isManual && (
-            <span style={{ fontSize: 10, background: '#1a1f10', border: '0.5px solid #2d3d18', color: '#8ab84a', padding: '2px 5px', borderRadius: 3, marginLeft: 6 }}>
-              manual
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontFamily: 'monospace', color: '#c8f04a' }}>
-            -${Math.abs(transaction.amount).toFixed(2)}
-          </span>
-          {(transaction.isManual ? onDelete : onDeleteOffset) && (
-            <span
-              onClick={() => {
-                const id = transaction._id ?? transaction.id;
-                transaction.isManual ? onDelete(id) : onDeleteOffset(id);
-              }}
-              style={{ color: '#333', cursor: 'pointer', fontSize: 14, transition: 'color 0.15s' }}
-              onMouseEnter={e => e.target.style.color = '#ff6b6b'}
-              onMouseLeave={e => e.target.style.color = '#333'}
-            >×</span>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{
@@ -118,8 +81,8 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, onDeleteOffse
       </span>
 
       {/* Description */}
-      <span style={{ color: '#888', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {transaction.description}
+      <span style={{ color: transaction.isOffset ? '#8ab84a' : '#888', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {transaction.description}{transaction.isOffset ? ' (offset)' : ''}
         {transaction.isManual && (
           <span style={{ fontSize: 10, background: '#1a1f10', border: '0.5px solid #2d3d18', color: '#8ab84a', padding: '2px 5px', borderRadius: 3, marginLeft: 6 }}>
             manual
@@ -143,7 +106,7 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, onDeleteOffse
           onMouseEnter={e => e.currentTarget.style.borderColor = '#c8f04a'}
           onMouseLeave={e => { if (!showDropdown) e.currentTarget.style.borderColor = '#2a2a2a'; }}
         >
-          {transaction.category} ▾
+          {effectiveCategory} ▾
         </div>
 
         {showDropdown && (
@@ -168,21 +131,25 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, onDeleteOffse
                     key={sub.id}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onCategoryChange(transactionId, sub.label);
-                      setActiveDropdown(null)
+                      if (transaction.isOffset && !transaction.isManual) {
+                        onOffsetCategoryChange(transactionId, sub.label);
+                      } else {
+                        onCategoryChange(transactionId, sub.label);
+                      }
+                      setActiveDropdown(null);
                     }}
                     style={{
                       padding: '7px 12px', fontSize: 12, cursor: 'pointer',
-                      color: transaction.category === sub.label ? '#c8f04a' : '#888',
-                      background: transaction.category === sub.label ? '#1a1f10' : 'transparent',
+                      color: effectiveCategory === sub.label ? '#c8f04a' : '#888',
+                      background: effectiveCategory === sub.label ? '#1a1f10' : 'transparent',
                       transition: 'all 0.1s',
                     }}
                     onMouseEnter={e => {
-                      if (transaction.category !== sub.label)
+                      if (effectiveCategory !== sub.label)
                         e.currentTarget.style.background = '#161616';
                     }}
                     onMouseLeave={e => {
-                      if (transaction.category !== sub.label)
+                      if (effectiveCategory !== sub.label)
                         e.currentTarget.style.background = 'transparent';
                     }}
                   >
@@ -196,13 +163,16 @@ function TransactionRow({ transaction, onCategoryChange, onDelete, onDeleteOffse
       </div>
 
       {/* Amount */}
-      <span style={{ fontFamily: 'monospace', color: '#666', minWidth: 60, textAlign: 'right' }}>
-        ${Math.abs(transaction.amount).toFixed(2)}
+      <span style={{ fontFamily: 'monospace', color: transaction.isOffset ? '#c8f04a' : '#666', minWidth: 60, textAlign: 'right' }}>
+        {transaction.isOffset ? '-' : ''}${Math.abs(transaction.amount).toFixed(2)}
       </span>
 
       {/* Delete */}
       <span
-        onClick={() => onDelete(transactionId)}
+        onClick={() => transaction.isOffset
+          ? (transaction.isManual ? onDelete(transactionId) : onDeleteOffset(transactionId))
+          : onDelete(transactionId)
+        }
         style={{ color: '#333', cursor: 'pointer', fontSize: 14, padding: '0 2px', transition: 'color 0.15s' }}
         onMouseEnter={e => e.target.style.color = '#ff6b6b'}
         onMouseLeave={e => e.target.style.color = '#333'}
@@ -386,13 +356,14 @@ function AddTransactionForm({ month, onAdd, onCancel }) {
   );
 }
 
-function CategoryRow({ category, maxAmount, onCategoryChange, onDelete, onDeleteOffset }) {
+function CategoryRow({ category, maxAmount, onCategoryChange, onOffsetCategoryChange, onDelete, onDeleteOffset }) {
   const [expanded, setExpanded] = useState(false);
   const [expandedSub, setExpandedSub] = useState(null);
   const [activeDropdown, setActiveDropdown] = useState(null);
   const pct = maxAmount > 0 ? (category.total / maxAmount) * 100 : 0;
 
-  if (category.total === 0) return null;
+  const hasOffsets = category.subcategories.some(s => s.transactions.some(t => t.isOffset));
+  if (category.total === 0 && !hasOffsets) return null;
 
   return (
     <div style={{ marginBottom: 4 }}>
@@ -421,7 +392,7 @@ function CategoryRow({ category, maxAmount, onCategoryChange, onDelete, onDelete
 
       {expanded && (
         <div style={{ marginLeft: 28, marginBottom: 4 }}>
-          {category.subcategories.filter(s => s.total !== 0).map(sub => (
+          {category.subcategories.filter(s => s.total !== 0 || s.transactions.some(t => t.isOffset)).map(sub => (
             <div key={sub.id}>
               <div
                 onClick={() => setExpandedSub(expandedSub === sub.id ? null : sub.id)}
@@ -448,6 +419,7 @@ function CategoryRow({ category, maxAmount, onCategoryChange, onDelete, onDelete
                       key={i}
                       transaction={t}
                       onCategoryChange={onCategoryChange}
+                      onOffsetCategoryChange={onOffsetCategoryChange}
                       onDelete={onDelete}
                       onDeleteOffset={onDeleteOffset}
                       activeDropdown={activeDropdown}
@@ -780,7 +752,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const handleCategoryChange = (transactionId, newCategory) => {
       setTransactions(prev => prev.map(t =>
         t._id === transactionId || t.id === transactionId
-          ? { ...t, category: newCategory }
+          ? { ...t, category: newCategory, ...(t.isOffset ? { offset_category: newCategory } : {}) }
           : t
       ));
     };
@@ -811,8 +783,14 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
     const [localOffsets, setLocalOffsets] = useState(offsets || []);
 
     const handleDeleteOffset = (offsetId) => {
-      setLocalOffsets(prev => prev.filter(o => 
+      setLocalOffsets(prev => prev.filter(o =>
         (o._id ?? o.id) !== offsetId
+      ));
+    };
+
+    const handleOffsetCategoryChange = (offsetId, newCategory) => {
+      setLocalOffsets(prev => prev.map(o =>
+        (o._id ?? o.id) === offsetId ? { ...o, offset_category: newCategory } : o
       ));
     };
   
@@ -925,6 +903,7 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
                 category={cat}
                 maxAmount={maxAmount}
                 onCategoryChange={handleCategoryChange}
+                onOffsetCategoryChange={handleOffsetCategoryChange}
                 onDelete={handleDeleteTransaction}
                 onDeleteOffset={handleDeleteOffset}
               />

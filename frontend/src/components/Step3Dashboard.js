@@ -815,9 +815,12 @@ function IncomeSection({ month, autoIncome, onTotalChange }) {
         
         {/* Sidebar */}
         <div style={{ background: '#111', borderRight: '0.5px solid #1a1a1a', padding: '28px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 40 }}>
+          <div
+            onClick={onBack}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 40, cursor: 'pointer' }}
+          >
             <div style={{ width: 8, height: 8, background: '#c8f04a', borderRadius: '50%' }} />
-            <span style={{ fontFamily: 'monospace', fontSize: 15 }}>myfinance</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, letterSpacing: '-0.3px' }}>myfinance</span>
           </div>
           {[['Spending', true], ['Savings', false], ['Overview', false]].map(([label, active]) => (
             <div key={label} style={{

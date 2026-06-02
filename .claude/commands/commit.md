@@ -41,7 +41,9 @@ Print the proposed message and ask the user to confirm or edit before committing
 
 ## Step 3 — Stage and commit
 
-Stage all modified tracked files (do NOT use `git add -A` — stage specific files by name to avoid accidentally including `.env` or other sensitive files):
+Stage all modified, added, and deleted files by name (do NOT use `git add -A` — stage specific files to avoid accidentally including `.env` or other sensitive files).
+
+This includes deleted files — `git add <path>` stages deletions too:
 
 ```bash
 git add <specific files from the diff>

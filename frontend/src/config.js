@@ -86,3 +86,21 @@ export const ACCOUNT_TYPES = [
   ];
   
   export const CONFIDENCE_THRESHOLD = 75;
+
+  export const CATEGORY_COLORS = {
+    housing:        '#c8f04a',
+    food:           '#ff8a7a',
+    transportation: '#7ab8ff',
+    utilities:      '#f0c248',
+    personal:       '#b08cf2',
+    giving:         '#f29ec2',
+    other:          '#9aa0a6',
+  };
+
+  export const ACCOUNT_TINTS = {
+    'Credit Card':    { dot: '#b08cf2', soft: 'rgba(176,140,242,0.10)', border: 'rgba(176,140,242,0.20)' },
+    'Checking':       { dot: '#7ab8ff', soft: 'rgba(122,184,255,0.10)', border: 'rgba(122,184,255,0.20)' },
+    'Savings':        { dot: '#7fe0b6', soft: 'rgba(127,224,182,0.10)', border: 'rgba(127,224,182,0.20)' },
+    'Venmo/Cash App': { dot: '#f0c248', soft: 'rgba(240,194,72,0.10)',  border: 'rgba(240,194,72,0.20)'  },
+    'Other':          { dot: '#888',    soft: 'rgba(140,140,140,0.10)', border: 'rgba(140,140,140,0.20)' },
+  };

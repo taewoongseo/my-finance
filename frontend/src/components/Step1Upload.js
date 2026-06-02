@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { useNavigate } from 'react-router-dom';
 import { usePlaidLink } from 'react-plaid-link';
-import { ACCOUNT_TYPES } from '../config';
+import { ACCOUNT_TYPES, ACCOUNT_TINTS } from '../config';
 import { getAccounts, saveAccount, deleteAccount, updateAccount, getSavingsAccounts } from '../utils/storage';
 import { authFetch, API_URL } from '../utils/auth';
 
@@ -10,8 +11,122 @@ const now = new Date();
 for (let i = 0; i < 24; i++) {
   const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
   const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  const label = d.toLocaleString('default', { month: 'long', year: 'numeric' });
-  MONTHS.push({ value, label });
+  MONTHS.push({
+    value,
+    year: d.getFullYear(),
+    monthIdx: d.getMonth(),
+    isCurrent: i === 0,
+  });
+}
+
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function MonthPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const byYear = {};
+  MONTHS.forEach(m => { (byYear[m.year] = byYear[m.year] || []).push(m); });
+  const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+
+  const sel = MONTHS.find(m => m.value === value) || MONTHS[0];
+  const selLabel = new Date(sel.year, sel.monthIdx, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', background: '#0f0f0f',
+          border: `0.5px solid ${open ? '#3a3a3a' : '#222'}`,
+          color: '#f0ede8', padding: '14px 16px', borderRadius: 10, fontSize: 15,
+          fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          transition: 'border-color 0.15s',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8, background: '#181818',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            border: '0.5px solid #222', flexShrink: 0,
+          }}>
+            <div style={{ fontSize: 8, color: '#666', fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.5 }}>
+              {String(sel.year).slice(2)}
+            </div>
+            <div style={{ fontSize: 11, color: '#c8f04a', fontWeight: 600, lineHeight: 1, marginTop: 1 }}>
+              {MONTH_ABBR[sel.monthIdx].toUpperCase()}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 500, letterSpacing: '-0.2px' }}>{selLabel}</div>
+            <div style={{ fontSize: 11, color: '#555', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
+              {sel.value}{sel.isCurrent ? ' · current' : ''}
+            </div>
+          </div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 14 14" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s', color: '#555', flexShrink: 0 }}>
+          <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 100,
+          background: '#0d0d0d', border: '0.5px solid #2a2a2a', borderRadius: 12,
+          padding: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.6)', maxHeight: 340, overflowY: 'auto',
+        }}>
+          {years.map(y => (
+            <div key={y} style={{ marginBottom: 14 }}>
+              <div style={{
+                fontSize: 10, color: '#555', fontFamily: "'JetBrains Mono', monospace",
+                letterSpacing: 1, marginBottom: 8, padding: '0 2px',
+              }}>
+                {y}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                {Array.from({ length: 12 }, (_, mi) => {
+                  const found = byYear[y].find(m => m.monthIdx === mi);
+                  const isSel = found && found.value === value;
+                  const isAvail = !!found;
+                  return (
+                    <button
+                      key={mi}
+                      type="button"
+                      disabled={!isAvail}
+                      onClick={() => { if (isAvail) { onChange(found.value); setOpen(false); } }}
+                      style={{
+                        padding: '10px 0',
+                        background: isSel ? '#c8f04a' : 'transparent',
+                        color: isSel ? '#0a0a0a' : isAvail ? '#aaa' : '#2a2a2a',
+                        border: `0.5px solid ${isSel ? '#c8f04a' : 'transparent'}`,
+                        borderRadius: 6, fontSize: 12, fontWeight: isSel ? 600 : 400,
+                        fontFamily: 'inherit',
+                        cursor: isAvail ? 'pointer' : 'not-allowed',
+                        transition: 'all 0.12s',
+                      }}
+                      onMouseEnter={e => { if (isAvail && !isSel) e.currentTarget.style.background = '#161616'; }}
+                      onMouseLeave={e => { if (isAvail && !isSel) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      {MONTH_ABBR[mi]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onConnect, onReconnect, onSwitchToPlaid, onSwitchToManual, unmappedAccounts, onReuseAccount }) {
@@ -21,10 +136,9 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
   const isPlaidConnected = dataSource === 'plaid' && account.plaidAccountId;
   const isPlaidError = dataSource === 'plaid-error';
   const isPlaidMode = dataSource === 'plaid' || isPlaidError;
+  const tint = ACCOUNT_TINTS[account.type] || ACCOUNT_TINTS['Other'];
 
-  const borderColor = isPlaidError
-    ? '#ff6b6b33'
-    : (isPlaidConnected || files.length > 0) ? '#c8f04a33' : '#1e1e1e';
+  const railColor = isPlaidError ? '#ff6b6b' : (isPlaidConnected || files.length > 0) ? '#c8f04a' : tint.dot;
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -37,149 +151,183 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
   };
 
   return (
-    <div style={{ background: '#111', border: `0.5px solid ${borderColor}`, borderRadius: 12, padding: '14px 16px' }}>
+    <div style={{
+      background: '#0e0e0e', border: '0.5px solid #1a1a1a', borderRadius: 14,
+      overflow: 'hidden', display: 'flex',
+    }}>
+      {/* Left color rail */}
+      <div style={{ width: 2, background: railColor, flexShrink: 0, transition: 'background 0.2s' }} />
 
-      {/* Main row: account info · action · delete */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: '-0.2px' }}>{account.name}</div>
-          <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{account.type}</div>
+      <div style={{ flex: 1, padding: '14px 16px' }}>
+        {/* Top row: name + type chip + status/action + delete */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: '-0.2px' }}>{account.name}</span>
+              <span style={{
+                fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                color: tint.dot, background: tint.soft,
+                border: `0.5px solid ${tint.border}`,
+                padding: '2px 7px', borderRadius: 999, flexShrink: 0,
+              }}>
+                {account.type}
+              </span>
+            </div>
+            {isPlaidConnected && (
+              <div style={{ fontSize: 11, color: '#444', marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                ↳ {account.plaidAccountName}
+              </div>
+            )}
+          </div>
+
+          {isPlaidConnected && (
+            <span style={{ fontSize: 11, color: '#6a9a3a', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: "'JetBrains Mono', monospace" }}>
+              ● Connected
+            </span>
+          )}
+
+          {isPlaidError && (
+            <button
+              onClick={() => onReconnect(account.id)}
+              style={{
+                padding: '5px 11px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                border: '0.5px solid rgba(255,107,107,0.3)', background: 'transparent', color: '#ff6b6b',
+                fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0,
+              }}
+            >
+              Reconnect →
+            </button>
+          )}
+
+          <div
+            onClick={() => onDelete(account.id)}
+            style={{ color: '#2e2e2e', cursor: 'pointer', fontSize: 16, padding: '0 2px', transition: 'color 0.15s', flexShrink: 0 }}
+            onMouseEnter={e => e.target.style.color = '#ff6b6b'}
+            onMouseLeave={e => e.target.style.color = '#2e2e2e'}
+          >×</div>
         </div>
 
-        {/* Action button — compact, right of name */}
+        {/* Error subrow */}
+        {isPlaidError && (
+          <div style={{ fontSize: 11, color: 'rgba(255,107,107,0.5)', marginTop: 6 }}>
+            Bank connection lost — reconnect to continue
+          </div>
+        )}
+
+        {/* Source toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+          <span style={{ fontSize: 10, color: '#555', fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.6, textTransform: 'uppercase', flexShrink: 0 }}>
+            Source
+          </span>
+          <div style={{
+            display: 'inline-flex', background: '#151515',
+            border: '0.5px solid #222', borderRadius: 8, padding: 2, gap: 2,
+          }}>
+            {[
+              { label: 'Upload file', isPlaid: false },
+              { label: 'Auto sync', isPlaid: true },
+            ].map(({ label, isPlaid }) => {
+              const active = isPlaid ? isPlaidMode : !isPlaidMode;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => isPlaid ? onSwitchToPlaid(account.id) : onSwitchToManual(account.id)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                    fontFamily: 'inherit', border: 'none', transition: 'all 0.12s',
+                    background: active ? '#1c1c1c' : 'transparent',
+                    color: active ? '#f0ede8' : '#555',
+                    fontWeight: active ? 500 : 400,
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {isPlaidMode && !isPlaidConnected && !isPlaidError && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+              <button
+                onClick={() => onConnect(account.id)}
+                style={{
+                  padding: '5px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                  border: '0.5px solid rgba(138,184,74,0.3)', background: 'transparent', color: '#8ab84a',
+                  fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 500,
+                }}
+              >
+                Connect bank →
+              </button>
+              {unmappedAccounts?.length > 0 && (
+                <button
+                  onClick={() => onReuseAccount(account.id)}
+                  style={{
+                    padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                    border: 'none', background: 'transparent', color: '#4a6a3a',
+                    fontFamily: 'inherit', whiteSpace: 'nowrap',
+                    textDecoration: 'underline', textUnderlineOffset: 2,
+                  }}
+                >
+                  Reuse →
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Drop zone — manual mode */}
         {!isPlaidMode && (
-          <>
+          <div style={{ marginTop: 10 }}>
             <div
               onDragOver={e => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
               onClick={() => document.getElementById(inputId).click()}
               style={{
-                padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                padding: '10px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
                 border: `0.5px dashed ${dragging ? '#c8f04a' : '#2a2a2a'}`,
                 background: dragging ? '#1a1f10' : 'transparent',
                 color: dragging ? '#c8f04a' : '#555',
-                transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
+                transition: 'all 0.15s', textAlign: 'center',
               }}
             >
-              + PDF
+              Drop PDF or CSV — or click to browse
             </div>
             <input id={inputId} type="file" accept=".pdf,.csv" multiple style={{ display: 'none' }} onChange={handleInput} />
-          </>
-        )}
 
-        {isPlaidMode && !isPlaidConnected && !isPlaidError && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
-            <button
-              onClick={() => onConnect(account.id)}
-              style={{
-                padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                border: '0.5px solid #3a4a2a', background: 'transparent', color: '#8ab84a',
-                fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 500,
-              }}
-            >
-              Connect a new bank →
-            </button>
-            {unmappedAccounts?.length > 0 && (
-              <button
-                onClick={() => onReuseAccount(account.id)}
-                style={{
-                  padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                  border: 'none', background: 'transparent', color: '#4a6a3a',
-                  fontFamily: 'inherit', whiteSpace: 'nowrap',
-                  textDecoration: 'underline', textUnderlineOffset: 2,
-                }}
-              >
-                Reuse a connected bank →
-              </button>
+            {files.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                {files.map((file, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: '#1a1f10', border: '0.5px solid #2d3d18', borderRadius: 6, padding: '5px 10px',
+                  }}>
+                    <span style={{ fontSize: 11, color: '#8ab84a', fontFamily: "'JetBrains Mono', monospace" }}>
+                      ✓ {file.name.length > 32 ? file.name.slice(0, 32) + '…' : file.name}
+                    </span>
+                    <span
+                      onClick={() => onFileRemove(account.id, i)}
+                      style={{ fontSize: 12, color: '#444', cursor: 'pointer', marginLeft: 8, transition: 'color 0.15s' }}
+                      onMouseEnter={e => e.target.style.color = '#ff6b6b'}
+                      onMouseLeave={e => e.target.style.color = '#444'}
+                    >×</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
 
+        {/* Plaid connected — info strip */}
         {isPlaidConnected && (
-          <span style={{ fontSize: 12, color: '#6a9a3a', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            ● Connected
-          </span>
-        )}
-
-        {isPlaidError && (
-          <button
-            onClick={() => onReconnect(account.id)}
-            style={{
-              padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-              border: '0.5px solid #ff6b6b44', background: 'transparent', color: '#ff6b6b',
-              fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0,
-            }}
-          >
-            Reconnect →
-          </button>
-        )}
-
-        <div
-          onClick={() => onDelete(account.id)}
-          style={{ color: '#2e2e2e', cursor: 'pointer', fontSize: 16, padding: '0 2px', transition: 'color 0.15s', flexShrink: 0 }}
-          onMouseEnter={e => e.target.style.color = '#ff6b6b'}
-          onMouseLeave={e => e.target.style.color = '#2e2e2e'}
-        >×</div>
-      </div>
-
-      {/* Connected account name — plain subrow, not a button */}
-      {isPlaidConnected && (
-        <div style={{ fontSize: 12, color: '#444', marginTop: 6 }}>
-          {account.plaidAccountName}
-        </div>
-      )}
-
-      {/* Error subrow */}
-      {isPlaidError && (
-        <div style={{ fontSize: 11, color: '#ff6b6b66', marginTop: 6 }}>
-          Bank connection lost — reconnect to continue
-        </div>
-      )}
-
-      {/* File chips */}
-      {!isPlaidMode && files.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-          {files.map((file, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: '#1a1f10', border: '0.5px solid #2d3d18', borderRadius: 6, padding: '5px 10px',
-            }}>
-              <span style={{ fontSize: 11, color: '#8ab84a', fontFamily: 'monospace' }}>
-                ✓ {file.name.length > 30 ? file.name.slice(0, 30) + '...' : file.name}
-              </span>
-              <span
-                onClick={() => onFileRemove(account.id, i)}
-                style={{ fontSize: 12, color: '#444', cursor: 'pointer', marginLeft: 8, transition: 'color 0.15s' }}
-                onMouseEnter={e => e.target.style.color = '#ff6b6b'}
-                onMouseLeave={e => e.target.style.color = '#444'}
-              >×</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Switch source link */}
-      <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-        {!isPlaidMode && (
-          <span
-            onClick={() => onSwitchToPlaid(account.id)}
-            style={{ fontSize: 11, color: '#333', cursor: 'pointer', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.target.style.color = '#8ab84a'}
-            onMouseLeave={e => e.target.style.color = '#333'}
-          >
-            Use Plaid instead →
-          </span>
-        )}
-        {isPlaidMode && (
-          <span
-            onClick={() => onSwitchToManual(account.id)}
-            style={{ fontSize: 11, color: '#333', cursor: 'pointer', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.target.style.color = '#888'}
-            onMouseLeave={e => e.target.style.color = '#333'}
-          >
-            ← Switch to manual
-          </span>
+          <div style={{
+            marginTop: 10, padding: '8px 12px', borderRadius: 8,
+            background: 'rgba(122,184,255,0.05)', border: '0.5px solid rgba(122,184,255,0.15)',
+            fontSize: 11, color: '#7ab8ff',
+          }}>
+            Auto-syncing transactions for the selected month
+          </div>
         )}
       </div>
     </div>
@@ -188,6 +336,7 @@ function AccountTile({ account, files, onFileDrop, onFileRemove, onDelete, onCon
 
 export default function Step1Upload({ onProcess, loading }) {
   const { getToken } = useAuth();
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState([]);
   const [uploads, setUploads] = useState({});
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0].value);
@@ -397,32 +546,25 @@ export default function Step1Upload({ onProcess, loading }) {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <div style={{ width: '100%', maxWidth: 600 }}>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 48 }}>
-          <div style={{ width: 8, height: 8, background: '#c8f04a', borderRadius: '50%' }} />
-          <span style={{ fontFamily: 'monospace', fontSize: 15, letterSpacing: '-0.5px' }}>myfinance</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 48 }}>
+          <div
+            onClick={() => navigate('/')}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+          >
+            <div style={{ width: 8, height: 8, background: '#c8f04a', borderRadius: '50%' }} />
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, letterSpacing: '-0.3px' }}>myfinance</span>
+          </div>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#444', letterSpacing: 0.5 }}>
+            / upload
+          </span>
         </div>
 
         <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: '-0.5px', marginBottom: 8 }}>
-          Upload statements
+          Process a new month
         </h1>
 
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>Select month</div>
-          <select
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-            style={{
-              background: '#111', border: '0.5px solid #2a2a2a', color: '#f0ede8',
-              padding: '10px 40px 10px 14px', borderRadius: 8, fontSize: 14,
-              fontFamily: 'inherit', width: '100%', cursor: 'pointer', appearance: 'none',
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
-              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center',
-            }}
-          >
-            {MONTHS.map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
+          <MonthPicker value={selectedMonth} onChange={setSelectedMonth} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
